@@ -1,36 +1,32 @@
 /* ============================================================
    PTVLiveMap - Main Application
    ============================================================
-   Architecture:
-     bootstrap()       - fetch routes + stops from PTV API, cache 1hr
-     fetchLiveData()   - fetch departures from hub stop every 30s
-     calculatePosition() - interpolate train position using timetable
-     animate()         - rAF loop updates marker positions each frame
+   Data flow (GitHub Pages / GitHub Actions):
+     data/network.json  - routes + stops fetched daily by GH Actions
+     data/live.json     - departures fetched ~every 60s by GH Actions
+
+   The browser never calls the PTV API directly.
+   requestAnimationFrame runs position interpolation at ~60fps so
+   trains move smoothly between the ~60-second data refreshes.
    ============================================================ */
 
 'use strict';
 
 class PTVLiveMap {
   constructor() {
-    // Leaflet objects
-    this.map         = null;
-    this.routeGroup  = null;
-    this.stopGroup   = null;
-    this.trainGroup  = null;
+    this.map          = null;
+    this.routeGroup   = null;
+    this.stopGroup    = null;
+    this.trainGroup   = null;
 
-    // Data stores
-    this.routeData   = new Map(); // routeId -> { id, name, color, totalMinutes, stopIds }
-    this.stopsData   = new Map(); // stopId  -> { id, name, lat, lng }
+    this.routeData    = new Map(); // routeId -> { id, name, color, totalMinutes, stopIds }
+    this.stopsData    = new Map(); // stopId  -> { id, name, lat, lng }
 
-    // Live state
-    this.liveRuns    = new Map(); // runId -> run object
+    this.liveRuns     = new Map(); // runId -> run state object
     this.trainMarkers = new Map(); // runId -> { marker, el }
-
-    // Layer caches
     this.routeLayers  = new Map(); // routeId -> L.polyline
     this.stopLayers   = new Map(); // stopId  -> L.circleMarker
 
-    // UI state
     this.activeRoutes  = new Set(Object.keys(CONFIG.ROUTES).map(Number));
     this.showTrains    = true;
     this.showStations  = true;
@@ -38,10 +34,12 @@ class PTVLiveMap {
     this.panelOpen     = false;
     this.followedRunId = null;
 
-    // Timers
-    this.pollTimer  = null;
-    this.animFrame  = null;
-    this._animRunning = false;
+    this.pollTimer     = null;
+    this.animFrame     = null;
+    this._animRunning  = false;
+
+    // Track the last data/live.json fetch time to detect stale data
+    this._lastFetchedAt = null;
   }
 
   // ──────────────────────────────────────────────────────────
@@ -50,117 +48,69 @@ class PTVLiveMap {
   async init() {
     this.initMap();
     this.setupKeyboard();
-    await this.bootstrap();
+    await this.loadNetworkData();
     await this.fetchLiveData();
     this.startAnimation();
     this.startPolling();
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Map initialisation
+  //  Map setup
   // ──────────────────────────────────────────────────────────
   initMap() {
     this.map = L.map('map', {
-      center:  CONFIG.MAP_CENTER,
-      zoom:    CONFIG.MAP_ZOOM,
-      minZoom: CONFIG.MAP_MIN_ZOOM,
-      maxZoom: CONFIG.MAP_MAX_ZOOM,
+      center:   CONFIG.MAP_CENTER,
+      zoom:     CONFIG.MAP_ZOOM,
+      minZoom:  CONFIG.MAP_MIN_ZOOM,
+      maxZoom:  CONFIG.MAP_MAX_ZOOM,
       zoomControl: true,
-      attributionControl: true,
     });
 
     L.tileLayer(CONFIG.TILE_URL, {
       attribution: CONFIG.TILE_ATTRIBUTION,
-      subdomains: 'abcd',
-      maxZoom: 20,
+      subdomains:  'abcd',
+      maxZoom:     20,
     }).addTo(this.map);
 
-    // Separate layer groups so we can toggle each independently
     this.routeGroup = L.layerGroup().addTo(this.map);
     this.stopGroup  = L.layerGroup().addTo(this.map);
     this.trainGroup = L.layerGroup().addTo(this.map);
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Bootstrap: load static route + stop data (cached 1hr)
+  //  Load static network data (written daily by GH Actions)
   // ──────────────────────────────────────────────────────────
-  async bootstrap() {
+  async loadNetworkData() {
     this.setStatus('loading');
     this.setCount('Loading network...');
 
-    const CACHE_KEY = 'ptv_network_v2';
-    const cached = this.loadCache(CACHE_KEY, CONFIG.BOOTSTRAP_CACHE_MS);
-    if (cached) {
-      this.applyNetworkData(cached);
-      return;
-    }
-
     try {
-      // 1. Get all metro (route_type=0) routes
-      const routesData = await this.apiGet('/v3/routes?route_types=0');
-      const metroRoutes = (routesData.routes || []).filter(r => CONFIG.ROUTES[r.route_id]);
+      // Cache-bust so we always get the latest GH Actions commit
+      const res  = await fetch(`${CONFIG.NETWORK_DATA_URL}?t=${Date.now()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
 
-      if (!metroRoutes.length) throw new Error('No metro routes returned');
+      if (!data.routes || !data.stops) throw new Error('Invalid network.json format');
 
-      // 2. Fetch stops for each route in controlled batches to stay within rate limits
-      const stopResults = await this.batchFetch(
-        metroRoutes.map(r => `/v3/stops/route/${r.route_id}/route_type/0?direction_id=0`)
-      );
+      for (const [id, r] of Object.entries(data.routes)) {
+        this.routeData.set(Number(id), r);
+      }
+      for (const [id, s] of Object.entries(data.stops)) {
+        this.stopsData.set(Number(id), s);
+      }
 
-      const network = { routes: {}, stops: {} };
-
-      metroRoutes.forEach((route, i) => {
-        const cfg = CONFIG.ROUTES[route.route_id];
-        const raw = stopResults[i];
-        if (!cfg || !raw) return;
-
-        const stops = (raw.stops || [])
-          .filter(s => s.stop_latitude && s.stop_longitude)
-          .sort((a, b) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
-
-        network.routes[route.route_id] = {
-          id:           route.route_id,
-          name:         cfg.name,
-          color:        cfg.color,
-          totalMinutes: cfg.totalMinutes,
-          stopIds:      stops.map(s => s.stop_id),
-        };
-
-        stops.forEach(s => {
-          if (!network.stops[s.stop_id]) {
-            network.stops[s.stop_id] = {
-              id:   s.stop_id,
-              name: (s.stop_name || '').replace(/ Station$/, ''),
-              lat:  s.stop_latitude,
-              lng:  s.stop_longitude,
-            };
-          }
-        });
-      });
-
-      this.saveCache(CACHE_KEY, network);
-      this.applyNetworkData(network);
+      this.renderNetwork();
+      this.buildRouteFilters();
 
     } catch (err) {
-      console.error('[PTV] Bootstrap failed:', err);
+      console.error('[PTV] Network data load failed:', err.message);
       this.setStatus('error');
-      this.setCount('Network load failed - check proxy config');
+      this.setCount('Network data unavailable - run "Fetch Network Data" workflow');
     }
-  }
-
-  applyNetworkData(network) {
-    for (const [id, r] of Object.entries(network.routes)) {
-      this.routeData.set(Number(id), r);
-    }
-    for (const [id, s] of Object.entries(network.stops)) {
-      this.stopsData.set(Number(id), s);
-    }
-    this.renderNetwork();
-    this.buildRouteFilters();
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Render static network (route lines + station dots)
+  //  Render static network (polylines + station dots)
   // ──────────────────────────────────────────────────────────
   renderNetwork() {
     this.routeGroup.clearLayers();
@@ -168,7 +118,6 @@ class PTVLiveMap {
     this.routeLayers.clear();
     this.stopLayers.clear();
 
-    // Draw route polylines
     for (const [routeId, route] of this.routeData) {
       const coords = route.stopIds
         .map(id => this.stopsData.get(id))
@@ -178,12 +127,11 @@ class PTVLiveMap {
       if (coords.length < 2) continue;
 
       const poly = L.polyline(coords, {
-        color:       route.color,
-        weight:      CONFIG.ROUTE_WEIGHT,
-        opacity:     CONFIG.ROUTE_OPACITY,
+        color:        route.color,
+        weight:       CONFIG.ROUTE_WEIGHT,
+        opacity:      CONFIG.ROUTE_OPACITY,
         smoothFactor: 1,
       });
-
       poly.bindTooltip(route.name + ' Line', { sticky: true, direction: 'top' });
 
       this.routeLayers.set(routeId, poly);
@@ -192,14 +140,12 @@ class PTVLiveMap {
       }
     }
 
-    // Draw station dots (visible from zoom 12+)
     for (const [stopId, stop] of this.stopsData) {
       const marker = L.circleMarker([stop.lat, stop.lng], {
         radius:      3.5,
         fillColor:   '#ffffff',
-        fillOpacity: 0.45,
+        fillOpacity: 0.4,
         stroke:      false,
-        interactive: true,
       }).bindTooltip(stop.name, { direction: 'top', offset: [0, -5] });
 
       marker.on('click', () => {
@@ -212,26 +158,32 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Fetch live departures from hub stop (Flinders Street)
+  //  Fetch live departures (data/live.json written by GH Actions)
   // ──────────────────────────────────────────────────────────
   async fetchLiveData() {
     this.setStatus('loading');
 
     try {
-      // Fetch departures from Flinders Street - expand=run gives us run details inline
-      const data = await this.apiGet(
-        `/v3/departures/route_type/0/stop/${CONFIG.HUB_STOP_ID}` +
-        `?expand=run&max_results=${CONFIG.MAX_RESULTS}&look_backwards=false`
-      );
+      // Cache-bust on every request so we always get the latest commit
+      const res  = await fetch(`${CONFIG.LIVE_DATA_URL}?t=${Date.now()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // Skip processing if data hasn't changed since last fetch
+      if (data.fetched_at && data.fetched_at === this._lastFetchedAt) {
+        this.setStatus('ok');
+        return;
+      }
+      this._lastFetchedAt = data.fetched_at;
 
       const departures = data.departures || [];
       const runs       = data.runs       || {};
       const now        = Date.now();
-      const seen        = new Set();
+      const seen       = new Set();
 
       for (const dep of departures) {
-        const runId  = dep.run_id;
-        const run    = runs[runId];
+        const runId   = dep.run_id;
+        const run     = runs[runId];
         if (!run) continue;
 
         const routeId = dep.route_id;
@@ -239,17 +191,15 @@ class PTVLiveMap {
         const route   = this.routeData.get(routeId);
         if (!cfg || !route || !route.stopIds.length) continue;
 
-        // Prefer estimated time, fall back to scheduled
-        const depTimeStr = dep.estimated_departure_utc || dep.scheduled_departure_utc;
+        const depTimeStr  = dep.estimated_departure_utc || dep.scheduled_departure_utc;
+        const schedStr    = dep.scheduled_departure_utc;
         if (!depTimeStr) continue;
 
-        const depMs  = Date.parse(depTimeStr);
-        const schedMs = dep.scheduled_departure_utc ? Date.parse(dep.scheduled_departure_utc) : depMs;
+        const depMs   = Date.parse(depTimeStr);
+        const schedMs = schedStr ? Date.parse(schedStr) : depMs;
         const delayMin = Math.round((depMs - schedMs) / 60000);
 
-        // Hub stop index in this route's ordered stop list
-        const hubIdx = route.stopIds.indexOf(CONFIG.HUB_STOP_ID);
-        // If hub not found in route, use middle as approximation
+        const hubIdx = route.stopIds.indexOf(dep.stop_id);
         const effectiveHubIdx = hubIdx >= 0 ? hubIdx : Math.floor(route.stopIds.length / 2);
 
         const finalStop = this.stopsData.get(run.final_stop_id);
@@ -260,29 +210,29 @@ class PTVLiveMap {
         this.liveRuns.set(runId, {
           runId,
           routeId,
-          routeName:   cfg.name,
-          color:       cfg.color,
-          directionId: dep.direction_id,
-          directionName: run.direction_name || '',
-          finalStopId:   run.final_stop_id,
-          finalStopName: finalStop ? finalStop.name : (run.direction_name || ''),
+          routeName:      cfg.name,
+          color:          cfg.color,
+          directionId:    dep.direction_id,
+          directionName:  run.direction_name || '',
+          finalStopId:    run.final_stop_id,
+          finalStopName:  finalStop ? finalStop.name : (run.direction_name || ''),
           hubDepartureMs: depMs,
-          hubStopIdx:    effectiveHubIdx,
-          stopIds:       route.stopIds,
-          totalMinutes:  cfg.totalMinutes,
+          hubStopIdx:     effectiveHubIdx,
+          stopIds:        route.stopIds,
+          totalMinutes:   cfg.totalMinutes,
           delayMin,
-          vehicle:       run.vehicle_descriptor || null,
-          lastSeen:      now,
-          // Preserve smoothed position from previous frame to avoid jump on data refresh
+          vehicle:        run.vehicle_descriptor || null,
+          lastSeen:       now,
+          // Preserve smoothed coords across data refreshes to avoid position jumps
           smoothLat: existing ? existing.smoothLat : null,
           smoothLng: existing ? existing.smoothLng : null,
         });
       }
 
-      // Remove runs not seen for more than STALE_MULTIPLIER refresh cycles
-      const staleThreshold = CONFIG.STALE_MULTIPLIER * CONFIG.LIVE_REFRESH_MS;
+      // Remove runs not seen after STALE_MULTIPLIER refresh cycles
+      const staleMs = CONFIG.STALE_MULTIPLIER * CONFIG.LIVE_REFRESH_MS;
       for (const [runId, run] of this.liveRuns) {
-        if (!seen.has(runId) && (now - run.lastSeen) > staleThreshold) {
+        if (!seen.has(runId) && (now - run.lastSeen) > staleMs) {
           this.removeTrain(runId);
           this.liveRuns.delete(runId);
         }
@@ -290,22 +240,21 @@ class PTVLiveMap {
 
       const count = this.liveRuns.size;
       this.setCount(`${count} train${count !== 1 ? 's' : ''} active`);
-      this.setLastUpdate(new Date());
+      this.setLastUpdate(data.fetched_at ? new Date(data.fetched_at) : new Date());
       this.setStatus('ok');
 
     } catch (err) {
-      console.error('[PTV] Live fetch failed:', err);
+      console.error('[PTV] Live data fetch failed:', err.message);
       this.setStatus('error');
     }
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Animation loop (requestAnimationFrame)
+  //  Animation - runs at ~60fps regardless of data refresh rate
   // ──────────────────────────────────────────────────────────
   startAnimation() {
     if (this._animRunning) return;
     this._animRunning = true;
-
     const tick = () => {
       if (this.showTrains) this.updateTrainPositions();
       this.animFrame = requestAnimationFrame(tick);
@@ -325,8 +274,9 @@ class PTVLiveMap {
       const pos = this.calculatePosition(run, now);
       if (!pos) continue;
 
-      // Smooth position: lerp 10% toward target each frame (~16ms) to prevent jitter on data refresh
-      const SMOOTH = 0.08;
+      // Smooth lerp toward calculated position each frame - prevents
+      // visible jumps when new data arrives with slightly different timing
+      const SMOOTH = 0.07;
       if (run.smoothLat === null) {
         run.smoothLat = pos.lat;
         run.smoothLng = pos.lng;
@@ -338,7 +288,6 @@ class PTVLiveMap {
       this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run);
     }
 
-    // Prune markers for removed runs
     for (const [runId] of this.trainMarkers) {
       if (!this.liveRuns.has(runId)) this.removeTrain(runId);
     }
@@ -346,11 +295,9 @@ class PTVLiveMap {
 
   // ──────────────────────────────────────────────────────────
   //  Position interpolation
-  //
-  //  Model: train departs hub stop at hubDepartureMs and moves
-  //  along the stop sequence at a constant rate derived from
-  //  totalMinutes / totalStops. This is a timetable-based
-  //  approximation since PTV doesn't expose real GPS positions.
+  //  Trains move continuously at ~60fps between data refreshes.
+  //  The timetable-based model: elapsed time / journey time
+  //  determines fractional position along the stop sequence.
   // ──────────────────────────────────────────────────────────
   calculatePosition(run, now) {
     const { hubDepartureMs, hubStopIdx, stopIds, totalMinutes } = run;
@@ -361,18 +308,16 @@ class PTVLiveMap {
     const elapsedMin = (now - hubDepartureMs) / 60000;
     const minPerStop = totalMinutes / stops.length;
 
-    // Float index along the stop sequence from the hub stop
     let floatIdx = hubStopIdx + elapsedMin / minPerStop;
-
-    // Clamp to valid range
     floatIdx = Math.max(0, Math.min(stops.length - 1.001, floatIdx));
 
     const prevIdx = Math.floor(floatIdx);
     const nextIdx = prevIdx + 1;
-    const t       = floatIdx - prevIdx; // 0..1 progress between stops
+    const t       = floatIdx - prevIdx;
 
     if (nextIdx >= stops.length) {
-      return { lat: stops[stops.length - 1].lat, lng: stops[stops.length - 1].lng };
+      const last = stops[stops.length - 1];
+      return { lat: last.lat, lng: last.lng };
     }
 
     const prev = stops[prevIdx];
@@ -385,11 +330,11 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Marker create / update
+  //  Train marker management
   // ──────────────────────────────────────────────────────────
   upsertTrainMarker(runId, lat, lng, run) {
-    const latlng  = [lat, lng];
-    const isLate  = run.delayMin > 2;
+    const latlng = [lat, lng];
+    const isLate = run.delayMin > 2;
 
     if (this.trainMarkers.has(runId)) {
       const { marker, el } = this.trainMarkers.get(runId);
@@ -399,8 +344,7 @@ class PTVLiveMap {
         this.map.setView(latlng, this.map.getZoom(), { animate: false });
       }
     } else {
-      // Build DOM element for the dot (DivIcon gives full CSS control)
-      const el  = document.createElement('div');
+      const el = document.createElement('div');
       el.className = `tm${isLate ? ' late' : ''}`;
       el.style.cssText = `background:${run.color};box-shadow:0 0 7px ${run.color}80;`;
 
@@ -469,11 +413,7 @@ class PTVLiveMap {
   }
 
   toggleFollow() {
-    if (this.followedRunId) {
-      this.followedRunId = null;
-    }
-    // If called while an info panel is open but not following, start following
-    // (button is only visible when train info is open, so runId is known)
+    this.followedRunId = this.followedRunId ? null : this.followedRunId;
     this.syncFollowBtn();
   }
 
@@ -485,24 +425,18 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Layer visibility toggles
+  //  Layer toggles
   // ──────────────────────────────────────────────────────────
   toggleLayer(layer, visible) {
     if (layer === 'trains') {
       this.showTrains = visible;
-      if (!visible) {
-        for (const [id] of this.trainMarkers) this.removeTrain(id);
-      }
+      if (!visible) for (const [id] of this.trainMarkers) this.removeTrain(id);
     }
-
     if (layer === 'stations') {
       this.showStations = visible;
       this.stopGroup.clearLayers();
-      if (visible) {
-        for (const [, marker] of this.stopLayers) this.stopGroup.addLayer(marker);
-      }
+      if (visible) for (const [, m] of this.stopLayers) this.stopGroup.addLayer(m);
     }
-
     if (layer === 'routes') {
       this.showRoutes = visible;
       this.routeGroup.clearLayers();
@@ -522,16 +456,14 @@ class PTVLiveMap {
     if (!container) return;
     container.innerHTML = '';
 
-    // Only show routes we actually loaded data for
-    const loadedIds = new Set(this.routeData.keys());
+    const loaded = new Set(this.routeData.keys());
 
     for (const [idStr, cfg] of Object.entries(CONFIG.ROUTES)) {
       const id = Number(idStr);
-      if (!loadedIds.has(id)) continue;
+      if (!loaded.has(id)) continue;
 
       const el = document.createElement('div');
       el.className = 'rf-item';
-      el.dataset.routeId = id;
       el.innerHTML =
         `<span class="rf-dot" style="background:${cfg.color}"></span>` +
         `<span>${cfg.name}</span>`;
@@ -555,34 +487,24 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Panel toggle
+  //  Panel + search
   // ──────────────────────────────────────────────────────────
   togglePanel() {
     this.panelOpen = !this.panelOpen;
     const panel  = document.getElementById('panel');
     const legend = document.getElementById('legend');
-
     panel.classList.toggle('panel-hidden', !this.panelOpen);
     panel.setAttribute('aria-hidden', String(!this.panelOpen));
-
-    // Nudge legend left to avoid overlap
-    if (legend) {
-      legend.style.right = this.panelOpen
-        ? `calc(var(--panel-w) + 14px)`
-        : '14px';
-    }
+    if (legend) legend.style.right = this.panelOpen ? 'calc(var(--panel-w) + 14px)' : '14px';
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  Search
-  // ──────────────────────────────────────────────────────────
   setupKeyboard() {
     const input   = document.getElementById('search-input');
     const results = document.getElementById('search-results');
 
     if (input) {
-      input.addEventListener('input', e => this.handleSearch(e.target.value));
-      input.addEventListener('blur',  () => setTimeout(() => { results.innerHTML = ''; }, 200));
+      input.addEventListener('input',  e => this.handleSearch(e.target.value));
+      input.addEventListener('blur',   () => setTimeout(() => { if (results) results.innerHTML = ''; }, 200));
     }
 
     document.addEventListener('keydown', e => {
@@ -599,10 +521,9 @@ class PTVLiveMap {
   handleSearch(query) {
     const results = document.getElementById('search-results');
     if (!results) return;
-
     if (!query || query.length < 2) { results.innerHTML = ''; return; }
 
-    const q  = query.toLowerCase();
+    const q = query.toLowerCase();
     const matches = [...this.stopsData.values()]
       .filter(s => s.name.toLowerCase().includes(q))
       .slice(0, 8);
@@ -613,7 +534,6 @@ class PTVLiveMap {
     }
 
     results.innerHTML = matches.map(s => {
-      // Find a color for this stop's first associated route
       let color = '#fff';
       for (const [, route] of this.routeData) {
         if (route.stopIds.includes(s.id)) { color = route.color; break; }
@@ -634,54 +554,23 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Utility actions
+  //  Actions
   // ──────────────────────────────────────────────────────────
-  resetView() {
-    this.map.setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
-  }
-
+  resetView()        { this.map.setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM); }
   toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    else document.exitFullscreen().catch(() => {});
   }
-
   clearCache() {
-    try { localStorage.removeItem('ptv_network_v2'); } catch {}
+    try { localStorage.clear(); } catch {}
     location.reload();
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Polling
+  //  Polling - re-reads data/live.json on interval
   // ──────────────────────────────────────────────────────────
   startPolling() {
     this.pollTimer = setInterval(() => this.fetchLiveData(), CONFIG.LIVE_REFRESH_MS);
-  }
-
-  // ──────────────────────────────────────────────────────────
-  //  PTV API request via proxy
-  // ──────────────────────────────────────────────────────────
-  async apiGet(path) {
-    const url = `${CONFIG.PROXY_URL}?path=${encodeURIComponent(path)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status}: ${body.slice(0, 80)}`);
-    }
-    return res.json();
-  }
-
-  // Batch parallel fetches in groups to avoid hammering the proxy
-  async batchFetch(paths, batchSize = 4) {
-    const results = [];
-    for (let i = 0; i < paths.length; i += batchSize) {
-      const chunk = paths.slice(i, i + batchSize);
-      const settled = await Promise.allSettled(chunk.map(p => this.apiGet(p)));
-      results.push(...settled.map(r => r.status === 'fulfilled' ? r.value : null));
-    }
-    return results;
   }
 
   // ──────────────────────────────────────────────────────────
@@ -691,7 +580,7 @@ class PTVLiveMap {
     const el = document.getElementById('api-dot');
     if (!el) return;
     el.className = { ok: 'dot-ok', error: 'dot-error', loading: 'dot-loading' }[state] || 'dot-loading';
-    el.title     = { ok: 'API live', error: 'API error', loading: 'Fetching...' }[state] || '';
+    el.title     = { ok: 'Live',   error: 'Data error', loading: 'Updating...' }[state] || '';
   }
 
   setCount(text) {
@@ -701,29 +590,6 @@ class PTVLiveMap {
 
   setLastUpdate(date) {
     const el = document.getElementById('last-update');
-    if (el) {
-      el.textContent = `Updated ${date.toLocaleTimeString('en-AU', {
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-      })}`;
-    }
-  }
-
-  // ──────────────────────────────────────────────────────────
-  //  localStorage cache helpers
-  // ──────────────────────────────────────────────────────────
-  loadCache(key, maxAgeMs) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return null;
-      const { ts, data } = JSON.parse(raw);
-      if (Date.now() - ts > maxAgeMs) return null;
-      return data;
-    } catch { return null; }
-  }
-
-  saveCache(key, data) {
-    try {
-      localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
-    } catch { /* storage quota exceeded - continue without cache */ }
+    if (el) el.textContent = `Data: ${date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}`;
   }
 }

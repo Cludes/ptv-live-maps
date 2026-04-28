@@ -1,0 +1,50 @@
+name: Fetch Live Train Data
+
+# Runs every 5 minutes. Inside each run it fetches 5 times with ~60s gaps,
+# giving roughly 1-minute data freshness while staying within GH cron limits.
+# Public repos have unlimited Actions minutes, so this costs nothing.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id:      ${{ secrets.CLUDESAPP_ID }}
+          private-key: ${{ secrets.CLUDESAPP_PEM }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Fetch 5 times, ~60 seconds apart, within this single 5-minute workflow.
+      # This gives ~1-minute data freshness without needing a proxy or external service.
+      - name: Fetch loop
+        env:
+          PTV_DEV_ID:  ${{ secrets.PTV_DEV_ID }}
+          PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "=== Fetch $i / 5 ==="
+            node .github/scripts/fetch-trains.js
+            git add data/live.json
+            git diff --staged --quiet || git commit -m "chore: live train data [skip ci]"
+            git push
+            [ $i -lt 5 ] && sleep 58
+          done

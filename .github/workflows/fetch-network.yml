@@ -1,0 +1,45 @@
+name: Fetch Network Data (Routes + Stops)
+
+# Runs once daily and on manual trigger.
+# Populate data/network.json by running this manually after adding secrets.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 3am UTC daily (1pm AEST / 2pm AEDT)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-network:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id:      ${{ secrets.CLUDESAPP_ID }}
+          private-key: ${{ secrets.CLUDESAPP_PEM }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch routes and stops
+        env:
+          PTV_DEV_ID:  ${{ secrets.PTV_DEV_ID }}
+          PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
+        run: node .github/scripts/fetch-network.js
+
+      - name: Commit and push
+        run: |
+          git add data/network.json
+          git diff --staged --quiet || git commit -m "chore: update network data [skip ci]"
+          git push

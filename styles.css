@@ -92,10 +92,24 @@ body {
   color: #fff;
 }
 
+.logo-words {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .logo-sub {
   font-size: 11px;
   color: var(--text-dim);
   letter-spacing: 0.2px;
+}
+
+.logo-dedication {
+  font-size: 10px;
+  color: rgba(0, 212, 255, 0.55);
+  letter-spacing: 0.8px;
+  font-style: italic;
+  margin-top: 1px;
 }
 
 #panel-toggle {
