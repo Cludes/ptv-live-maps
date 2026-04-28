@@ -25,6 +25,15 @@
           <span class="logo-dedication">For Alexander</span>
         </div>
       </div>
+
+      <div id="header-divider"></div>
+
+      <div id="header-status">
+        <span id="train-count">Connecting...</span>
+        <span id="last-update"></span>
+        <span id="api-dot" class="dot-loading" title="Status">●</span>
+      </div>
+
       <button id="panel-toggle" aria-label="Toggle controls" onclick="app.togglePanel()">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
              stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -34,13 +43,6 @@
         </svg>
       </button>
     </header>
-
-    <!-- ── Status bar ── -->
-    <div id="status-bar">
-      <span id="train-count">Connecting...</span>
-      <span id="last-update"></span>
-      <span id="api-dot" class="dot-loading" title="Status">●</span>
-    </div>
 
     <!-- ── Side panel ── -->
     <aside id="panel" class="panel-hidden" aria-hidden="true">
