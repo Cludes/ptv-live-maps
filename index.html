@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="description" content="Live Melbourne train tracker using PTV data" />
+  <title>PTV Live - Melbourne Train Tracker</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- Map fills the viewport -->
+    <div id="map"></div>
+
+    <!-- ── Top-left header ── -->
+    <header id="header">
+      <div id="logo">
+        <span class="logo-pulse"></span>
+        <span class="logo-text">PTV Live</span>
+        <span class="logo-sub">Melbourne Trains</span>
+      </div>
+      <button id="panel-toggle" aria-label="Toggle controls" onclick="app.togglePanel()">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6"  x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- ── Bottom-left status bar ── -->
+    <div id="status-bar">
+      <span id="train-count">Connecting...</span>
+      <span id="last-update"></span>
+      <span id="api-dot" class="dot-loading" title="API status">●</span>
+    </div>
+
+    <!-- ── Side panel ── -->
+    <aside id="panel" class="panel-hidden" aria-hidden="true">
+
+      <div class="panel-section">
+        <label class="section-label">Search Station</label>
+        <div class="search-wrap">
+          <input id="search-input" type="text" placeholder="Type a station name..."
+                 autocomplete="off" spellcheck="false" />
+        </div>
+        <div id="search-results" role="listbox"></div>
+      </div>
+
+      <div class="panel-section">
+        <label class="section-label">Layers</label>
+
+        <label class="toggle-row">
+          <span>Live Trains</span>
+          <input type="checkbox" id="toggle-trains" checked
+                 onchange="app.toggleLayer('trains', this.checked)" />
+          <span class="slider"></span>
+        </label>
+
+        <label class="toggle-row">
+          <span>Stations</span>
+          <input type="checkbox" id="toggle-stations" checked
+                 onchange="app.toggleLayer('stations', this.checked)" />
+          <span class="slider"></span>
+        </label>
+
+        <label class="toggle-row">
+          <span>Route Lines</span>
+          <input type="checkbox" id="toggle-routes" checked
+                 onchange="app.toggleLayer('routes', this.checked)" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="panel-section">
+        <label class="section-label">Filter Lines</label>
+        <div id="route-filters"></div>
+      </div>
+
+      <div class="panel-section">
+        <label class="section-label">Actions</label>
+        <div class="action-row">
+          <button class="action-btn" onclick="app.resetView()">Reset View</button>
+          <button class="action-btn" onclick="app.toggleFullscreen()">Fullscreen</button>
+        </div>
+        <div class="action-row" style="margin-top:8px">
+          <button class="action-btn" onclick="app.clearCache()">Clear Cache</button>
+          <button class="action-btn" onclick="app.fetchLiveData()">Refresh Now</button>
+        </div>
+      </div>
+
+      <footer class="panel-footer">
+        <p>Transit data &copy; <a href="https://www.ptv.vic.gov.au/" target="_blank" rel="noopener">Public Transport Victoria</a></p>
+        <p>Licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
+        <p style="margin-top:6px;color:#555">Press <kbd>F</kbd> for fullscreen · <kbd>Esc</kbd> to close</p>
+      </footer>
+    </aside>
+
+    <!-- ── Train detail popup ── -->
+    <div id="train-info" class="hidden" role="dialog" aria-label="Train details">
+      <button id="train-info-close" onclick="app.closeTrainInfo()" aria-label="Close">✕</button>
+      <div id="train-info-body"></div>
+      <div id="train-follow-row">
+        <button id="follow-btn" onclick="app.toggleFollow()">Follow Train</button>
+      </div>
+    </div>
+
+    <!-- ── Legend ── -->
+    <div id="legend">
+      <div class="legend-title">Train Lines</div>
+      <div class="legend-item"><i class="ldot" style="background:#E4222B"></i>Hurstbridge / Mernda</div>
+      <div class="legend-item"><i class="ldot" style="background:#094FA3"></i>Belgrave / Lilydale / Alamein / Glen Waverley</div>
+      <div class="legend-item"><i class="ldot" style="background:#16B4E8"></i>Pakenham / Cranbourne</div>
+      <div class="legend-item"><i class="ldot" style="background:#008B50"></i>Frankston / Werribee / Williamstown</div>
+      <div class="legend-item"><i class="ldot" style="background:#F7A500"></i>Craigieburn / Sunbury / Upfield</div>
+      <div class="legend-item"><i class="ldot" style="background:#F0A0C8"></i>Sandringham</div>
+    </div>
+
+  </div><!-- #app -->
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLs=" crossorigin=""></script>
+
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+  <script>
+    const app = new PTVLiveMap();
+    app.init().catch(err => console.error('Init failed:', err));
+  </script>
+</body>
+</html>

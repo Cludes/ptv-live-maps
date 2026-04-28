@@ -1,0 +1,15 @@
+{
+  "name": "ptv-live-maps",
+  "version": "1.0.0",
+  "description": "Live Melbourne train tracker using PTV API",
+  "private": true,
+  "scripts": {
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy",
+    "dev:netlify": "netlify dev"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+# Cloudflare Workers config
+# Run: wrangler deploy
+
+name = "ptv-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Do NOT put real credentials here.
+# Set secrets via: wrangler secret put PTV_DEV_ID
+#                  wrangler secret put PTV_API_KEY
