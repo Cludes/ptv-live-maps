@@ -19,6 +19,29 @@
   --font:      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
 }
 
+/* ---- Light theme overrides ---- */
+[data-theme="light"] {
+  --bg:       #f0f2f5;
+  --bg2:      #e4e7ec;
+  --panel-bg: rgba(248, 249, 251, 0.97);
+  --border:   rgba(0, 0, 0, 0.09);
+  --text:     #1a1a2e;
+  --text-dim: #7a7a90;
+}
+
+[data-theme="light"] #map                    { background: #e8ecf0; }
+[data-theme="light"] .leaflet-container      { background: #e8ecf0 !important; }
+[data-theme="light"] .logo-text              { color: var(--text); }
+[data-theme="light"] .tm                     { border-color: rgba(0,0,0,0.25); }
+[data-theme="light"] #search-input           { background: rgba(0,0,0,0.05); }
+[data-theme="light"] #search-input::placeholder { color: #bbb; }
+[data-theme="light"] .action-btn             { background: rgba(0,0,0,0.05); }
+[data-theme="light"] .slider                 { background: rgba(0,0,0,0.12); }
+[data-theme="light"] kbd                     { background: rgba(0,0,0,0.07); color: var(--text); }
+[data-theme="light"] .leaflet-control-zoom a { background: var(--panel-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+[data-theme="light"] .leaflet-control-attribution { background: var(--panel-bg) !important; color: var(--text-dim) !important; }
+[data-theme="light"] .leaflet-popup-content-wrapper { background: var(--panel-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+
 /* ---- Reset ---- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; width: 100%; overflow: hidden; }
@@ -139,6 +162,7 @@ body {
   margin-top: 1px;
 }
 
+#theme-toggle,
 #panel-toggle {
   display: flex;
   align-items: center;
@@ -154,6 +178,7 @@ body {
   cursor: pointer;
   transition: color 0.2s;
 }
+#theme-toggle:hover,
 #panel-toggle:hover { color: var(--text); }
 
 /* ---- Side panel ---- */
