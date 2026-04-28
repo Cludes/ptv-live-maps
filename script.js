@@ -37,6 +37,7 @@ class PTVLiveMap {
     this.pollTimer     = null;
     this.animFrame     = null;
     this._animRunning  = false;
+    this._demoMode     = false;
 
     // Track the last data/live.json fetch time to detect stale data
     this._lastFetchedAt = null;
@@ -241,10 +242,24 @@ class PTVLiveMap {
       }
 
       const count = this.liveRuns.size;
-      this.setCount(`${count} train${count !== 1 ? 's' : ''} active`);
-      this.setLastUpdate(data.fetched_at ? new Date(data.fetched_at) : new Date());
+
+      if (!data.fetched_at) {
+        // No real data yet - activate demo mode
+        this.activateDemoMode();
+      } else {
+        // Real data arrived - clear demo mode if it was active
+        if (this._demoMode) {
+          this._demoMode = false;
+          for (const [runId, run] of this.liveRuns) {
+            if (run._demo) { this.removeTrain(runId); this.liveRuns.delete(runId); }
+          }
+        }
+        this.setCount(`${count} train${count !== 1 ? 's' : ''} active`);
+        this.setLastUpdate(new Date(data.fetched_at));
+        this.setSetupOverlay(count === 0);
+      }
+
       this.setStatus('ok');
-      this.setSetupOverlay(!data.fetched_at || count === 0);
 
     } catch (err) {
       console.error('[PTV] Live data fetch failed:', err.message);
@@ -272,6 +287,19 @@ class PTVLiveMap {
       if (!this.activeRoutes.has(run.routeId)) {
         this.removeTrain(runId);
         continue;
+      }
+
+      // Demo: reverse direction when reaching the end of the route
+      if (run._demo) {
+        const stops = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
+        if (stops.length >= 2) {
+          const elapsedMin  = (now - run.hubDepartureMs) / 60000;
+          const floatIdx    = elapsedMin / (run.totalMinutes / stops.length);
+          if (floatIdx >= stops.length - 1) {
+            run.stopIds        = [...run.stopIds].reverse();
+            run.hubDepartureMs = now;
+          }
+        }
       }
 
       const pos = this.calculatePosition(run, now);
@@ -584,6 +612,49 @@ class PTVLiveMap {
     if (!el) return;
     el.className = { ok: 'dot-ok', error: 'dot-error', loading: 'dot-loading' }[state] || 'dot-loading';
     el.title     = { ok: 'Live',   error: 'Data error', loading: 'Updating...' }[state] || '';
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  Demo mode - simulated trains for when no API key is set
+  // ──────────────────────────────────────────────────────────
+  activateDemoMode() {
+    if (this._demoMode) return;
+    this._demoMode = true;
+    this.setSetupOverlay(false);
+
+    const now = Date.now();
+    let id = 9000;
+
+    for (const [routeIdStr, stopIds] of Object.entries(CONFIG.DEMO_STOPS)) {
+      const routeId = Number(routeIdStr);
+      const cfg     = CONFIG.ROUTES[routeId];
+      if (!cfg) continue;
+
+      const totalMs = cfg.totalMinutes * 60000;
+
+      // One outbound train 25% through, one inbound train 25% through return
+      this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds],          now - totalMs * 0.25));
+      this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds].reverse(), now - totalMs * 0.25));
+    }
+
+    this.setCount(`${this.liveRuns.size} trains (demo)`);
+    const el = document.getElementById('last-update');
+    if (el) el.textContent = 'Demo mode - no API key yet';
+  }
+
+  _makeDemoRun(id, routeId, cfg, stopIds, hubDepartureMs) {
+    return {
+      runId: id, routeId,
+      routeName: cfg.name, color: cfg.color,
+      directionId: 0, directionName: cfg.name,
+      finalStopId: null, finalStopName: cfg.name,
+      hubDepartureMs, hubStopIdx: 0,
+      stopIds, totalMinutes: cfg.totalMinutes,
+      delayMin: 0, vehicle: null,
+      lastSeen: Date.now(),
+      smoothLat: null, smoothLng: null,
+      _demo: true,
+    };
   }
 
   setSetupOverlay(visible) {

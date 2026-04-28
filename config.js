@@ -53,4 +53,24 @@ const CONFIG = {
 
   // Stale run removal threshold (multiples of LIVE_REFRESH_MS)
   STALE_MULTIPLIER: 6,
+  // ---- Demo mode stop sequences (used when no real API data is available) ----
+  // Ordered stop ID arrays from seeded network.json (terminus -> city or vice versa).
+  // Trains bounce back and forth so the map looks alive before the API key is added.
+  DEMO_STOPS: {
+    3:  [1019, 1169, 1197, 1067, 1038, 1163, 1057, 1181, 1068, 1071], // Craigieburn
+    15: [1014, 1209, 1102, 1135, 1025, 1046, 1068, 1071],             // Sunbury
+    7:  [1118, 1183, 1162, 1064, 1031, 1006, 1165, 1027, 1042, 1147, 1071], // Hurstbridge
+    9:  [1153, 1001, 1091, 1173, 1076, 1086, 1003, 1066, 1147, 1071], // Mernda
+    5:  [1043, 1054, 1100, 1022, 1039, 1011, 1013, 1071],             // Frankston
+    17: [1196, 1126, 1087, 1032, 1099, 1046, 1068, 1071],             // Werribee
+    16: [1050, 1037, 1157, 1030, 1164, 1181, 1068, 1071],             // Upfield
+    4:  [1167, 1172, 1133, 1185, 1145, 1011, 1013, 1071],             // Cranbourne
+    11: [1131, 1172, 1133, 1185, 1145, 1011, 1013, 1071],             // Pakenham
+    2:  [1020, 1082, 1122, 1090, 1112, 1130, 1051, 1071],             // Belgrave
+    8:  [1154, 1088, 1090, 1112, 1130, 1051, 1071],                   // Lilydale
+    6:  [1053, 1112, 1130, 1051, 1071],                               // Glen Waverley (approx)
+    1:  [1127, 1130, 1119, 1095, 1051, 1071],                         // Alamein
+    12: [1180, 1143, 1137, 1041, 1016, 1013],                         // Sandringham
+    18: [1202, 1186, 1080, 1099, 1046, 1068, 1071],                   // Williamstown
+  },
 };
