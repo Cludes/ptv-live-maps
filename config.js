@@ -44,6 +44,31 @@ const CONFIG = {
     16: { name: 'Upfield',       color: '#F7A500', totalMinutes: 45,  group: 'orange' },
     17: { name: 'Werribee',      color: '#008B50', totalMinutes: 55,  group: 'green'  },
     18: { name: 'Williamstown',  color: '#008B50', totalMinutes: 40,  group: 'green'  },
+
+    // V/Line regional routes (demo IDs - real IDs assigned by API after first network fetch)
+    3001: { name: 'Geelong / Warrnambool', color: '#00B2A9', totalMinutes: 195, group: 'vline' },
+    3002: { name: 'Ballarat',              color: '#7B2D8B', totalMinutes: 105, group: 'vline' },
+    3003: { name: 'Bendigo',               color: '#D4006A', totalMinutes: 120, group: 'vline' },
+    3004: { name: 'Gippsland',             color: '#E57200', totalMinutes: 200, group: 'vline' },
+    3005: { name: 'Seymour / Albury',      color: '#00629B', totalMinutes: 190, group: 'vline' },
+  },
+
+  // ---- V/Line name -> display config (used by fetch-network.js for dynamic route IDs) ----
+  VLINE_ROUTES: {
+    'Geelong':        { color: '#00B2A9', totalMinutes: 75  },
+    'Geelong Fast':   { color: '#00B2A9', totalMinutes: 55  },
+    'Warrnambool':    { color: '#00B2A9', totalMinutes: 195 },
+    'Ballarat':       { color: '#7B2D8B', totalMinutes: 105 },
+    'Ararat':         { color: '#7B2D8B', totalMinutes: 150 },
+    'Maryborough':    { color: '#7B2D8B', totalMinutes: 155 },
+    'Bendigo':        { color: '#D4006A', totalMinutes: 120 },
+    'Swan Hill':      { color: '#D4006A', totalMinutes: 235 },
+    'Echuca':         { color: '#D4006A', totalMinutes: 200 },
+    'Traralgon':      { color: '#E57200', totalMinutes: 135 },
+    'Bairnsdale':     { color: '#E57200', totalMinutes: 200 },
+    'Seymour':        { color: '#00629B', totalMinutes: 90  },
+    'Shepparton':     { color: '#00629B', totalMinutes: 165 },
+    'Albury':         { color: '#00629B', totalMinutes: 190 },
   },
 
   // ---- Visual ----
@@ -72,5 +97,12 @@ const CONFIG = {
     1:  [1127, 1130, 1119, 1095, 1051, 1071],                         // Alamein
     12: [1180, 1143, 1137, 1041, 1016, 1013],                         // Sandringham
     18: [1202, 1186, 1080, 1099, 1046, 1068, 1071],                   // Williamstown
+
+    // V/Line regional (stop IDs 3001+ are seeded in data/network.json)
+    3001: [3002, 3001, 3013, 3014, 1046, 1068],  // Warrnambool → Geelong → Southern Cross
+    3002: [3010, 3003, 1176, 1025, 1068],          // Ararat → Ballarat → Southern Cross
+    3003: [3004, 3033, 3031, 1014, 1025, 1068],    // Bendigo → Castlemaine → Sunbury → Southern Cross
+    3004: [3006, 3012, 3005, 3011, 1177, 1008, 1068], // Bairnsdale → Sale → Traralgon → Dandenong → Southern Cross
+    3005: [3008, 3007, 3050, 1001, 1147, 1068],    // Albury → Seymour → Epping → Clifton Hill → Southern Cross
   },
 };

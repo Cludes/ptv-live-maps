@@ -16,7 +16,13 @@
     "14": { "name": "Upfield", "color": "#F7A500" },
     "15": { "name": "Werribee", "color": "#008B50" },
     "16": { "name": "Williamstown", "color": "#008B50" },
-    "17": { "name": "Stony Point", "color": "#008B50" }
+    "17": { "name": "Stony Point", "color": "#008B50" },
+
+    "3001": { "name": "Geelong / Warrnambool", "color": "#00B2A9" },
+    "3002": { "name": "Ballarat",              "color": "#7B2D8B" },
+    "3003": { "name": "Bendigo",               "color": "#D4006A" },
+    "3004": { "name": "Gippsland",             "color": "#E57200" },
+    "3005": { "name": "Seymour / Albury",      "color": "#00629B" }
   },
   "stops": {
     "1071": { "name": "Flinders Street", "lat": -37.8183, "lng": 144.9671 },
@@ -228,6 +234,24 @@
     "1157": { "name": "Fawkner", "lat": -37.6910, "lng": 144.9634 },
     "1035": { "name": "Moomba Park", "lat": -37.7003, "lng": 144.9625 },
     "1148": { "name": "Strathmore", "lat": -37.7220, "lng": 144.9501 },
-    "1111": { "name": "Glenbervie", "lat": -37.7292, "lng": 144.9451 }
+    "1111": { "name": "Glenbervie", "lat": -37.7292, "lng": 144.9451 },
+
+    "3001": { "name": "Geelong",       "lat": -38.1486, "lng": 144.3593 },
+    "3002": { "name": "Warrnambool",   "lat": -38.3794, "lng": 142.4892 },
+    "3003": { "name": "Ballarat",      "lat": -37.5597, "lng": 143.8563 },
+    "3004": { "name": "Bendigo",       "lat": -36.7572, "lng": 144.2789 },
+    "3005": { "name": "Traralgon",     "lat": -38.1942, "lng": 146.5403 },
+    "3006": { "name": "Bairnsdale",    "lat": -37.8411, "lng": 147.6139 },
+    "3007": { "name": "Seymour",       "lat": -37.0272, "lng": 145.1314 },
+    "3008": { "name": "Albury",        "lat": -36.0789, "lng": 146.9205 },
+    "3009": { "name": "Shepparton",    "lat": -36.3833, "lng": 145.3983 },
+    "3010": { "name": "Ararat",        "lat": -37.2831, "lng": 142.9222 },
+    "3011": { "name": "Moe",           "lat": -38.1736, "lng": 146.2603 },
+    "3012": { "name": "Sale",          "lat": -38.1039, "lng": 147.0647 },
+    "3013": { "name": "North Geelong", "lat": -38.1044, "lng": 144.3517 },
+    "3014": { "name": "Lara",          "lat": -38.0233, "lng": 144.4025 },
+    "3031": { "name": "Kyneton",       "lat": -37.2467, "lng": 144.4508 },
+    "3033": { "name": "Castlemaine",   "lat": -37.0667, "lng": 144.2183 },
+    "3050": { "name": "Wallan",        "lat": -37.4125, "lng": 145.0128 }
   }
 }

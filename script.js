@@ -197,9 +197,9 @@ class PTVLiveMap {
         if (!run) continue;
 
         const routeId = dep.route_id;
-        const cfg     = CONFIG.ROUTES[routeId];
         const route   = this.routeData.get(routeId);
-        if (!cfg || !route || !route.stopIds.length) continue;
+        const cfg     = CONFIG.ROUTES[routeId] || route; // fall back to network.json data for V/Line
+        if (!cfg || !route || !Array.isArray(route.stopIds) || !route.stopIds.length) continue;
 
         const depTimeStr  = dep.estimated_departure_utc || dep.scheduled_departure_utc;
         const schedStr    = dep.scheduled_departure_utc;

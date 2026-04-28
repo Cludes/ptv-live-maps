@@ -23,7 +23,17 @@ const OUT_PATH = path.resolve(__dirname, '../../data/live.json');
 // Melbourne metro route IDs
 const METRO_ROUTE_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15, 16, 17, 18];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// V/Line hub (Southern Cross) and regional terminuses for catching trains mid-route
+const VLINE_HUB_STOP = 1068;
+const VLINE_TERMINUS_STOPS = [
+  { id: 1094, name: 'Geelong'    },
+  { id: 1061, name: 'Ballarat'   },
+  { id: 1062, name: 'Bendigo'    },
+  { id: 1080, name: 'Traralgon'  },
+  { id: 1082, name: 'Bairnsdale' },
+  { id: 1085, name: 'Seymour'    },
+  { id: 1086, name: 'Albury'     },
+];
 
 function signedUrl(apiPath) {
   if (!DEV_ID || !API_KEY) throw new Error('PTV_DEV_ID or PTV_API_KEY not set');
@@ -100,6 +110,35 @@ async function main() {
       if (newDeps.length) console.log(`  ${stop.name}: +${newDeps.length} additional runs`);
     } catch (err) {
       console.warn(`  ${stop.name} fetch failed (non-fatal): ${err.message}`);
+    }
+  }
+
+  // ── V/Line ───────────────────────────────────────────────────────────────
+  console.log('Fetching V/Line departures from Southern Cross...');
+  await sleep(300);
+  try {
+    const vdata = await fetchJSON(signedUrl(
+      `/v3/departures/route_type/3/stop/${VLINE_HUB_STOP}?expand=run&max_results=100&look_backwards=false`
+    ));
+    const vdeps = vdata.departures || [];
+    allDepartures.push(...vdeps.filter(d => !allRuns[d.run_id]));
+    Object.assign(allRuns, vdata.runs || {});
+    console.log(`  Got ${vdeps.length} V/Line departures`);
+  } catch (err) {
+    console.warn(`  V/Line Southern Cross fetch failed (non-fatal): ${err.message}`);
+  }
+
+  for (const stop of VLINE_TERMINUS_STOPS) {
+    await sleep(300);
+    const p = `/v3/departures/route_type/3/stop/${stop.id}?expand=run&max_results=10&look_backwards=false`;
+    try {
+      const data  = await fetchJSON(signedUrl(p));
+      const deps  = (data.departures || []).filter(d => !allRuns[d.run_id]);
+      allDepartures.push(...deps);
+      Object.assign(allRuns, data.runs || {});
+      if (deps.length) console.log(`  ${stop.name}: +${deps.length} V/Line runs`);
+    } catch (err) {
+      console.warn(`  ${stop.name} V/Line fetch failed (non-fatal): ${err.message}`);
     }
   }
 
