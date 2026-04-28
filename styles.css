@@ -53,8 +53,8 @@ body {
   z-index: 500;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 16px;
+  padding: 12px 18px;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -65,13 +65,13 @@ body {
 #logo {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 14px;
 }
 
 .logo-pulse {
   display: block;
-  width: 9px;
-  height: 9px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 0 var(--accent);
@@ -81,33 +81,35 @@ body {
 
 @keyframes sonar {
   0%   { box-shadow: 0 0 0 0   rgba(0, 212, 255, 0.6); }
-  70%  { box-shadow: 0 0 0 10px rgba(0, 212, 255, 0);   }
+  70%  { box-shadow: 0 0 0 12px rgba(0, 212, 255, 0);   }
   100% { box-shadow: 0 0 0 0   rgba(0, 212, 255, 0);   }
 }
 
 .logo-text {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
   color: #fff;
+  line-height: 1.1;
 }
 
 .logo-words {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 1px;
 }
 
 .logo-sub {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-dim);
-  letter-spacing: 0.2px;
+  letter-spacing: 0.3px;
+  font-weight: 400;
 }
 
 .logo-dedication {
-  font-size: 10px;
-  color: rgba(0, 212, 255, 0.55);
-  letter-spacing: 0.8px;
+  font-size: 11px;
+  color: rgba(0, 212, 255, 0.6);
+  letter-spacing: 1px;
   font-style: italic;
   margin-top: 1px;
 }
