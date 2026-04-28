@@ -48,7 +48,6 @@ class PTVLiveMap {
   async init() {
     this.initMap();
     this.setupKeyboard();
-    this.setSetupOverlay(true);   // show until live data confirms trains exist
     await this.loadNetworkData();
     await this.fetchLiveData();
     this.startAnimation();
@@ -120,6 +119,8 @@ class PTVLiveMap {
     this.stopLayers.clear();
 
     for (const [routeId, route] of this.routeData) {
+      if (!Array.isArray(route.stopIds) || route.stopIds.length < 2) continue;
+
       const coords = route.stopIds
         .map(id => this.stopsData.get(id))
         .filter(Boolean)
