@@ -1,5 +1,8 @@
 # PTV Live - Melbourne Train Tracker
 
+[![Fetch Live Train Data](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-trains.yml/badge.svg)](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-trains.yml)
+[![Fetch Network Data](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-network.yml/badge.svg)](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-network.yml)
+
 A live Melbourne metro train tracker for GitHub Pages, powered by the [PTV Timetable API](https://www.ptv.vic.gov.au/footer/data-and-reporting/datasets/ptv-timetable-api/).
 
 GitHub Actions fetches train departure data every ~60 seconds and commits it to the repo. GitHub Pages serves the result as a static site - no external servers, no proxies.

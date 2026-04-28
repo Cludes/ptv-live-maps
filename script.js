@@ -48,6 +48,7 @@ class PTVLiveMap {
   async init() {
     this.initMap();
     this.setupKeyboard();
+    this.setSetupOverlay(true);   // show until live data confirms trains exist
     await this.loadNetworkData();
     await this.fetchLiveData();
     this.startAnimation();
@@ -242,6 +243,7 @@ class PTVLiveMap {
       this.setCount(`${count} train${count !== 1 ? 's' : ''} active`);
       this.setLastUpdate(data.fetched_at ? new Date(data.fetched_at) : new Date());
       this.setStatus('ok');
+      this.setSetupOverlay(!data.fetched_at || count === 0);
 
     } catch (err) {
       console.error('[PTV] Live data fetch failed:', err.message);
@@ -581,6 +583,11 @@ class PTVLiveMap {
     if (!el) return;
     el.className = { ok: 'dot-ok', error: 'dot-error', loading: 'dot-loading' }[state] || 'dot-loading';
     el.title     = { ok: 'Live',   error: 'Data error', loading: 'Updating...' }[state] || '';
+  }
+
+  setSetupOverlay(visible) {
+    const el = document.getElementById('setup-overlay');
+    if (el) el.classList.toggle('hidden', !visible);
   }
 
   setCount(text) {

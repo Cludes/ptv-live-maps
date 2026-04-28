@@ -111,6 +111,21 @@
       </div>
     </div>
 
+    <!-- ── Setup overlay (shown when no live data yet) ── -->
+    <div id="setup-overlay" class="hidden">
+      <div id="setup-card">
+        <div class="setup-title">Almost ready</div>
+        <div class="setup-sub">Live trains appear once the GitHub Actions workflows have run.</div>
+        <ol class="setup-steps">
+          <li>Add <code>PTV_DEV_ID</code> and <code>PTV_API_KEY</code> as repository secrets</li>
+          <li>Run the <strong>Fetch Network Data</strong> workflow (Actions tab)</li>
+          <li>Run the <strong>Fetch Live Train Data</strong> workflow</li>
+          <li>Trains update automatically every ~60 seconds after that</li>
+        </ol>
+        <div class="setup-note">The map shows Melbourne's station layout while you wait.</div>
+      </div>
+    </div>
+
     <!-- ── Legend ── -->
     <div id="legend">
       <div class="legend-title">Train Lines</div>
