@@ -56,6 +56,8 @@ class PTVLiveMap {
     this._trailN      = 0;         // frame counter for sampling rate
     this.showTrails   = localStorage.getItem('ptv-trails') !== '0';
 
+    this._cinemaMode  = false;
+
     // Track the last data/live.json fetch time to detect stale data
     this._lastFetchedAt = null;
   }
@@ -118,6 +120,14 @@ class PTVLiveMap {
     this.trailSvg = svg;
     // Reproject when map pans or zooms
     this.map.on('move zoom', () => { if (this.showTrails) this.renderTrails(); });
+    // Sync cinema state if browser exits fullscreen via its own UI
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && this._cinemaMode) {
+        this._cinemaMode = false;
+        document.body.classList.remove('cinema');
+        setTimeout(() => this.map.invalidateSize(), 50);
+      }
+    });
   }
 
   // ──────────────────────────────────────────────────────────
@@ -871,11 +881,12 @@ class PTVLiveMap {
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
+        if (this._cinemaMode) { this.toggleCinemaMode(); return; }
         this.closeTrainInfo();
         if (results) results.innerHTML = '';
       }
       if (e.key === 'f' && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT') {
-        this.toggleFullscreen();
+        this.toggleCinemaMode();
       }
       if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT') {
         this.togglePanel();
@@ -950,10 +961,21 @@ class PTVLiveMap {
     if (btn) btn.innerHTML = theme === 'light' ? ICONS.moon : ICONS.sun;
   }
 
-  resetView()        { this.map.setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM); }
-  toggleFullscreen() {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
-    else document.exitFullscreen().catch(() => {});
+  resetView() { this.map.setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM); }
+
+  toggleCinemaMode() {
+    this._cinemaMode = !this._cinemaMode;
+    document.body.classList.toggle('cinema', this._cinemaMode);
+    if (this._cinemaMode) {
+      // Close panel and train info so they don't linger under cinema overlay
+      if (this.panelOpen) this.togglePanel();
+      this.closeTrainInfo();
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+    // Leaflet needs to recalculate size after layout change
+    setTimeout(() => this.map.invalidateSize(), 50);
   }
   clearCache() {
     try { localStorage.clear(); } catch {}

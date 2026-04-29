@@ -167,6 +167,7 @@ body {
   margin-top: 1px;
 }
 
+#cinema-btn,
 #theme-toggle,
 #panel-toggle {
   display: flex;
@@ -183,6 +184,7 @@ body {
   cursor: pointer;
   transition: color 0.2s;
 }
+#cinema-btn:hover,
 #theme-toggle:hover,
 #panel-toggle:hover { color: var(--text); }
 
@@ -803,6 +805,39 @@ kbd {
   color: rgba(0, 212, 255, 0.6);
   font-style: italic;
 }
+
+/* ---- Cinema mode - map only, all UI hidden ---- */
+#cinema-exit {
+  display: none;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 15px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: color 0.2s, background 0.2s;
+}
+#cinema-exit:hover {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+body.cinema #header       { display: none; }
+body.cinema #panel        { display: none !important; }
+body.cinema #legend       { display: none; }
+body.cinema #train-info   { display: none; }
+body.cinema #setup-overlay { display: none; }
+body.cinema #cinema-exit  { display: flex; }
 
 /* ---- Responsive - Tablet (641px to 1024px) ---- */
 @media (min-width: 641px) and (max-width: 1024px) {

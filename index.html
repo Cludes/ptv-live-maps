@@ -39,6 +39,13 @@
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
 
+      <button id="cinema-btn" aria-label="Cinema mode" onclick="app.toggleCinemaMode()" title="Cinema mode (F)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+          <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+        </svg>
+      </button>
+
       <button id="panel-toggle" aria-label="Toggle controls" onclick="app.togglePanel()">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
              stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -119,7 +126,7 @@
       <footer class="panel-footer">
         <p>Transit data &copy; <a href="https://www.ptv.vic.gov.au/" target="_blank" rel="noopener">Public Transport Victoria</a></p>
         <p>Licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
-        <p style="margin-top:8px;color:#444">Press <kbd>F</kbd> fullscreen &nbsp; <kbd>P</kbd> panel</p>
+        <p style="margin-top:8px;color:#444">Press <kbd>F</kbd> cinema &nbsp; <kbd>P</kbd> panel &nbsp; <kbd>Esc</kbd> exit</p>
       </footer>
     </aside>
 
@@ -169,6 +176,9 @@
         <div class="legend-item"><i class="ldot" style="background:#00629B"></i>Seymour / Albury / Shepparton</div>
       </div>
     </div>
+
+    <!-- Cinema mode exit button - only visible in cinema mode -->
+    <button id="cinema-exit" onclick="app.toggleCinemaMode()" title="Exit cinema mode (Esc)">✕</button>
 
   </div>
 
