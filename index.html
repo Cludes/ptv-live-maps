@@ -46,6 +46,7 @@
           <line x1="3" y1="12" x2="21" y2="12"/>
           <line x1="3" y1="18" x2="21" y2="18"/>
         </svg>
+        <span id="dis-badge" class="hidden"></span>
       </button>
     </header>
 
@@ -90,6 +91,11 @@
           <button class="filter-all-btn" onclick="app.setAllRoutes(false)">None</button>
         </div>
         <div id="route-filters"></div>
+      </div>
+
+      <div class="panel-section hidden" id="disruptions-section">
+        <label class="section-label">Disruptions</label>
+        <div id="disruption-list"></div>
       </div>
 
       <div class="panel-section">

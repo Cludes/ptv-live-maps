@@ -68,7 +68,7 @@ class PTVLiveMap {
       if (body) { body.classList.add('hidden'); if (btn) btn.textContent = '▲'; }
     }
     await this.loadNetworkData();
-    await this.fetchLiveData();
+    await Promise.all([this.fetchLiveData(), this.loadDisruptions()]);
     this.startAnimation();
     this.startPolling();
   }
@@ -176,14 +176,33 @@ class PTVLiveMap {
       }).bindTooltip(stop.name, { direction: 'top', offset: [0, -5] });
 
       marker.on('click', () => {
-        const routeIds = this.stopToRoutes.get(stopId) || new Set();
+        const routeIds  = this.stopToRoutes.get(stopId) || new Set();
         const linesDots = [...routeIds].map(rid => {
           const r = this.routeData.get(rid);
           return r ? `<span class="sp-dot" style="background:${r.color}" title="${r.name}"></span>` : '';
         }).join('');
-        L.popup({ closeButton: false, className: 'station-popup', offset: [0, -6] })
+
+        const deps    = this._getStationDepartures(stopId);
+        const depRows = deps.length
+          ? deps.map(d => {
+              const eta      = d.minsAway === 0 ? '<span class="sp-arr">Now</span>' : `<span class="sp-eta">${d.minsAway}<span class="sp-min">m</span></span>`;
+              const lateTag  = d.delayMin > 2 ? `<span class="sp-late">+${d.delayMin}m</span>` : '';
+              return `<div class="sp-dep" onclick="app.selectTrainFromStation(${d.runId})">
+                <span class="sp-dep-dot" style="background:${d.color}"></span>
+                <span class="sp-dep-dest">To ${d.finalStopName}</span>
+                ${lateTag}
+                ${eta}
+              </div>`;
+            }).join('')
+          : '<div class="sp-no-trains">No upcoming trains found</div>';
+
+        L.popup({ closeButton: true, className: 'station-popup', maxWidth: 280, offset: [0, -6] })
           .setLatLng([stop.lat, stop.lng])
-          .setContent(`<div class="sp-name">${stop.name}</div>${linesDots ? `<div class="sp-lines">${linesDots}</div>` : ''}`)
+          .setContent(`
+            <div class="sp-name">${stop.name}</div>
+            ${linesDots ? `<div class="sp-lines">${linesDots}</div>` : ''}
+            <div class="sp-deps">${depRows}</div>
+          `)
           .openOn(this.map);
       });
 
@@ -306,6 +325,47 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
+  //  Disruptions
+  // ──────────────────────────────────────────────────────────
+  async loadDisruptions() {
+    try {
+      const res  = await fetch(`data/disruptions.json?t=${Date.now()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = data.disruptions || [];
+      this._renderDisruptions(list);
+    } catch {
+      // Non-fatal: disruptions panel stays empty
+    }
+  }
+
+  _renderDisruptions(disruptions) {
+    const badge = document.getElementById('dis-badge');
+    const listEl = document.getElementById('disruption-list');
+    const section = document.getElementById('disruptions-section');
+    if (!listEl) return;
+
+    if (!disruptions.length) {
+      if (badge)   badge.classList.add('hidden');
+      if (section) section.classList.add('hidden');
+      return;
+    }
+
+    if (badge)   { badge.textContent = disruptions.length; badge.classList.remove('hidden'); }
+    if (section) section.classList.remove('hidden');
+
+    listEl.innerHTML = disruptions.map(d => {
+      const link = d.url
+        ? `<a class="dis-link" href="${d.url}" target="_blank" rel="noopener">Details</a>`
+        : '';
+      return `<div class="dis-item">
+        <div class="dis-type">${d.type}</div>
+        <div class="dis-title">${d.title}${link}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ──────────────────────────────────────────────────────────
   //  Animation - runs at ~60fps regardless of data refresh rate
   // ──────────────────────────────────────────────────────────
   startAnimation() {
@@ -364,37 +424,64 @@ class PTVLiveMap {
 
   // ──────────────────────────────────────────────────────────
   //  Position interpolation
-  //  Trains move continuously at ~60fps between data refreshes.
-  //  The timetable-based model: elapsed time / journey time
-  //  determines fractional position along the stop sequence.
+  //  When network.json has stopDists (cumulative km per stop),
+  //  interpolation is distance-proportional so city-loop stops
+  //  (which are only ~500m apart) don't steal disproportionate
+  //  time from outer segments (~5–8km apart).
+  //  Falls back to equal-time-per-stop for older network.json.
   // ──────────────────────────────────────────────────────────
-  calculatePosition(run, now) {
-    const { hubDepartureMs, hubStopIdx, stopIds, totalMinutes } = run;
 
-    const stops = stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
+  // Returns { stops, floatIdx } plus distance fields if available.
+  // All position/ETA methods share this to avoid duplicating the math.
+  _computeProgress(run, now) {
+    const stops = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
     if (stops.length < 2) return null;
 
-    const elapsedMin = (now - hubDepartureMs) / 60000;
-    const minPerStop = totalMinutes / stops.length;
+    const elapsedMin = (now - run.hubDepartureMs) / 60000;
+    const route      = this.routeData.get(run.routeId);
+    const dists      = route?.stopDists;
 
-    let floatIdx = hubStopIdx + elapsedMin / minPerStop;
-    floatIdx = Math.max(0, Math.min(stops.length - 1.001, floatIdx));
+    if (dists && dists.length === stops.length) {
+      const totalDist = dists[dists.length - 1];
+      if (totalDist === 0) return null;
+      const speed      = totalDist / run.totalMinutes; // km/min
+      const hubDist    = dists[Math.min(run.hubStopIdx, dists.length - 1)] || 0;
+      const currentDist = Math.max(0, Math.min(totalDist, hubDist + elapsedMin * speed));
 
-    const prevIdx = Math.floor(floatIdx);
+      let prevI = 0;
+      for (let i = 1; i < dists.length; i++) {
+        if (dists[i] >= currentDist) { prevI = i - 1; break; }
+        if (i === dists.length - 1)    prevI = i;
+      }
+      const nextI   = Math.min(prevI + 1, dists.length - 1);
+      const segDist = dists[nextI] - dists[prevI];
+      const floatIdx = prevI + (segDist > 0 ? (currentDist - dists[prevI]) / segDist : 0);
+      return { stops, floatIdx, currentDist, dists, speed };
+    }
+
+    // Fallback: equal time per stop
+    const minPerStop = run.totalMinutes / stops.length;
+    const floatIdx   = Math.max(0, run.hubStopIdx + elapsedMin / minPerStop);
+    return { stops, floatIdx, minPerStop };
+  }
+
+  calculatePosition(run, now) {
+    const p = this._computeProgress(run, now);
+    if (!p) return null;
+    const { stops, floatIdx } = p;
+
+    const clamped = Math.max(0, Math.min(stops.length - 1.001, floatIdx));
+    const prevIdx = Math.floor(clamped);
     const nextIdx = prevIdx + 1;
-    const t       = floatIdx - prevIdx;
+    const t       = clamped - prevIdx;
 
     if (nextIdx >= stops.length) {
       const last = stops[stops.length - 1];
       return { lat: last.lat, lng: last.lng };
     }
-
-    const prev = stops[prevIdx];
-    const next = stops[nextIdx];
-
     return {
-      lat: prev.lat + (next.lat - prev.lat) * t,
-      lng: prev.lng + (next.lng - prev.lng) * t,
+      lat: stops[prevIdx].lat + (stops[nextIdx].lat - stops[prevIdx].lat) * t,
+      lng: stops[prevIdx].lng + (stops[nextIdx].lng - stops[prevIdx].lng) * t,
     };
   }
 
@@ -482,14 +569,52 @@ class PTVLiveMap {
   }
 
   _getNextStop(run) {
-    const stops = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
-    if (stops.length < 2) return null;
-    const elapsedMin = (Date.now() - run.hubDepartureMs) / 60000;
-    const minPerStop = run.totalMinutes / stops.length;
-    const floatIdx   = Math.max(0, run.hubStopIdx + elapsedMin / minPerStop);
-    const nextIdx    = Math.min(Math.ceil(floatIdx), stops.length - 1);
-    const minsAway   = Math.max(0, Math.round((nextIdx - floatIdx) * minPerStop));
+    const p = this._computeProgress(run, Date.now());
+    if (!p) return null;
+    const { stops, floatIdx, dists, speed, minPerStop } = p;
+
+    const nextIdx = Math.min(Math.ceil(floatIdx), stops.length - 1);
+    const minsAway = dists && speed
+      ? Math.max(0, Math.round((dists[nextIdx] - p.currentDist) / speed))
+      : Math.max(0, Math.round((nextIdx - floatIdx) * minPerStop));
+
     return { name: stops[nextIdx].name, minsAway };
+  }
+
+  _getStationDepartures(stopId) {
+    const results = [];
+    const now = Date.now();
+
+    for (const [, run] of this.liveRuns) {
+      if (run._demo) continue;
+      const stationIdx = run.stopIds.indexOf(stopId);
+      if (stationIdx < 0) continue;
+
+      const p = this._computeProgress(run, now);
+      if (!p) continue;
+      const { floatIdx, dists, speed, minPerStop } = p;
+
+      if (floatIdx >= stationIdx + 0.5) continue; // already passed
+
+      let minsAway;
+      if (dists && speed) {
+        minsAway = Math.max(0, Math.round((dists[stationIdx] - p.currentDist) / speed));
+      } else {
+        minsAway = Math.max(0, Math.round((stationIdx - floatIdx) * minPerStop));
+      }
+      if (minsAway > 90) continue;
+
+      results.push({
+        runId:         run.runId,
+        color:         run.color,
+        routeName:     run.routeName,
+        finalStopName: run.finalStopName || run.directionName,
+        minsAway,
+        delayMin:      run.delayMin,
+      });
+    }
+
+    return results.sort((a, b) => a.minsAway - b.minsAway).slice(0, 6);
   }
 
   _highlightRoute(routeId) {
@@ -516,6 +641,13 @@ class PTVLiveMap {
     this.syncFollowBtn();
     this._clearRouteHighlight();
     document.getElementById('train-info').classList.add('hidden');
+  }
+
+  selectTrainFromStation(runId) {
+    this.map.closePopup();
+    this.showTrainInfo(runId);
+    const marker = this.trainMarkers.get(runId);
+    if (marker) this.map.panTo(marker.marker.getLatLng());
   }
 
   toggleFollow() {

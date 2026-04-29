@@ -33,6 +33,16 @@ jobs:
           git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "${{ secrets.CLUDESAPP_ID }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
 
+      - name: Fetch disruptions
+        env:
+          PTV_DEV_ID:  ${{ secrets.PTV_DEV_ID }}
+          PTV_API_KEY: ${{ secrets.PTV_API_KEY }}
+        run: |
+          node .github/scripts/fetch-disruptions.js
+          git add data/disruptions.json
+          git diff --staged --quiet || git commit -m "chore: update disruptions [skip ci]"
+          git push
+
       # Fetch 5 times, ~60 seconds apart, within this single 5-minute workflow.
       # This gives ~1-minute data freshness without needing a proxy or external service.
       - name: Fetch loop

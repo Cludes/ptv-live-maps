@@ -94,6 +94,25 @@ function fetchJSON(url) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R    = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a    = Math.sin(dLat / 2) ** 2
+             + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+             * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function cumDistKm(stops) {
+  const d = [0];
+  for (let i = 1; i < stops.length; i++) {
+    const p = stops[i - 1], c = stops[i];
+    d.push(d[i - 1] + haversineKm(p.stop_latitude, p.stop_longitude, c.stop_latitude, c.stop_longitude));
+  }
+  return d;
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -119,7 +138,9 @@ async function main() {
 
       network.routes[route.route_id] = {
         id: route.route_id, name: cfg.name, color: cfg.color,
-        totalMinutes: cfg.totalMinutes, stopIds: stops.map(s => s.stop_id),
+        totalMinutes: cfg.totalMinutes,
+        stopIds:   stops.map(s => s.stop_id),
+        stopDists: cumDistKm(stops),
       };
       stops.forEach(s => {
         if (!network.stops[s.stop_id]) {
@@ -158,7 +179,9 @@ async function main() {
 
       network.routes[route.route_id] = {
         id: route.route_id, name, color: cfg.color,
-        totalMinutes: cfg.totalMinutes, stopIds: stops.map(s => s.stop_id),
+        totalMinutes: cfg.totalMinutes,
+        stopIds:   stops.map(s => s.stop_id),
+        stopDists: cumDistKm(stops),
       };
       stops.forEach(s => {
         if (!network.stops[s.stop_id]) {

@@ -41,6 +41,8 @@
 [data-theme="light"] .leaflet-control-zoom a { background: var(--panel-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
 [data-theme="light"] .leaflet-control-attribution { background: var(--panel-bg) !important; color: var(--text-dim) !important; }
 [data-theme="light"] .leaflet-popup-content-wrapper { background: var(--panel-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+[data-theme="light"] .sp-dep:hover { background: rgba(0,0,0,0.05); }
+[data-theme="light"] .dis-item { border-color: var(--border); }
 
 /* ---- Reset ---- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -475,6 +477,52 @@ kbd {
 
 #train-follow-row { margin-top: 12px; }
 
+/* ---- Panel toggle disruption badge ---- */
+#panel-toggle { position: relative; }
+#dis-badge {
+  position: absolute;
+  top: 4px; right: 4px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+#dis-badge.hidden { display: none; }
+
+/* ---- Disruptions panel section ---- */
+.dis-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.dis-item:last-child { border-bottom: none; }
+.dis-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--amber);
+  margin-bottom: 3px;
+}
+.dis-title {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.dis-link {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.dis-link:hover { text-decoration: underline; }
+
 /* ---- Station popup ---- */
 .station-popup .leaflet-popup-content-wrapper {
   background: var(--panel-bg);
@@ -487,25 +535,76 @@ kbd {
   padding: 0;
 }
 .station-popup .leaflet-popup-content {
-  margin: 10px 14px;
+  margin: 12px 14px;
+  min-width: 220px;
 }
 .station-popup .leaflet-popup-tip-container { display: none; }
+.station-popup .leaflet-popup-close-button {
+  color: var(--text-dim) !important;
+  font-size: 16px !important;
+  top: 6px !important;
+  right: 8px !important;
+}
 .sp-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text);
   margin-bottom: 6px;
+  padding-right: 16px;
 }
 .sp-lines {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  margin-bottom: 10px;
 }
 .sp-dot {
   display: inline-block;
   width: 10px;
   height: 10px;
   border-radius: 50%;
+}
+.sp-deps { display: flex; flex-direction: column; gap: 2px; }
+.sp-dep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.sp-dep:hover { background: rgba(255,255,255,0.07); }
+.sp-dep-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sp-dep-dest {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sp-eta {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.sp-min { font-size: 10px; font-weight: 400; }
+.sp-arr { font-size: 12px; font-weight: 700; color: var(--green); flex-shrink: 0; }
+.sp-late {
+  font-size: 10px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+.sp-no-trains {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 0;
 }
 #follow-btn {
   width: 100%;
