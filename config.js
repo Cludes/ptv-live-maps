@@ -24,7 +24,7 @@ const CONFIG = {
   // ---- Refresh ----
   // How often the frontend re-reads data/live.json (GitHub Actions updates it every ~5 min).
   // Cache-busting query param is appended so the browser always gets the latest version.
-  LIVE_REFRESH_MS: 30000, // 30s - poll often so we pick up GH Actions updates quickly
+  LIVE_REFRESH_MS: 60000, // 60s - data only changes every ~60s, no gain polling faster
 
   // ---- Melbourne metro routes ----
   ROUTES: {

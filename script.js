@@ -51,10 +51,11 @@ class PTVLiveMap {
     this.routeFilterEls      = new Map(); // routeId -> chip element
 
     // Comet trails
-    this.trailHistory = new Map(); // runId -> [{lat,lng}, ...]
-    this.trailSvg     = null;
-    this._trailN      = 0;         // frame counter for sampling rate
-    this.showTrails   = localStorage.getItem('ptv-trails') !== '0';
+    this.trailHistory   = new Map(); // kept for compat, no longer sampled
+    this.trailSvg       = null;
+    this._trailN        = 0;         // frame counter
+    this._trailPositions = null;     // cached geo positions, recomputed every 10 frames
+    this.showTrails     = localStorage.getItem('ptv-trails') !== '0';
 
     this._cinemaMode  = false;
 
@@ -94,6 +95,8 @@ class PTVLiveMap {
       minZoom:  CONFIG.MAP_MIN_ZOOM,
       maxZoom:  CONFIG.MAP_MAX_ZOOM,
       zoomControl: true,
+      maxBounds:          [[-39.5, 140.0], [-33.5, 150.5]], // Victoria + surrounds
+      maxBoundsViscosity: 1.0,
     });
 
     this.tileLayer = L.tileLayer(CONFIG.TILE_URL, {
@@ -743,31 +746,30 @@ class PTVLiveMap {
     const WIDTHS    = [1.5,  2,    2.5,  3,    3.5];
     const NUM_SEGS  = OPACITIES.length;
 
-    // Compute trail points analytically rather than from a real-time sample buffer.
-    // A 4-minute window at suburban speeds = ~2-4 km of visible trail, works
-    // immediately on load and in demo mode without any warm-up period.
     const SPAN_MS   = 4 * 60000;
     const N_SAMPLES = 20;
 
-    const now   = Date.now();
-    const paths = [];
-
-    for (const [runId, run] of this.liveRuns) {
-      if (!this.activeRoutes.has(run.routeId)) continue;
-      if (run.smoothLat === null) continue;
-
-      // Sample past positions at even intervals going back SPAN_MS
-      const pts = [];
-      for (let i = N_SAMPLES; i >= 1; i--) {
-        const pos = this.calculatePosition(run, now - i * (SPAN_MS / N_SAMPLES));
-        if (pos) pts.push(pos);
+    // Recompute geographic positions every 10 animation frames (~every 0.5s).
+    // Map pan/zoom calls renderTrails too but doesn't advance _trailN,
+    // so those calls just re-project the cached positions cheaply.
+    if (!this._trailPositions || this._trailN % 10 === 0) {
+      const now = Date.now();
+      this._trailPositions = new Map();
+      for (const [runId, run] of this.liveRuns) {
+        if (!this.activeRoutes.has(run.routeId)) continue;
+        if (run.smoothLat === null) continue;
+        const pts = [];
+        for (let i = N_SAMPLES; i >= 1; i--) {
+          const pos = this.calculatePosition(run, now - i * (SPAN_MS / N_SAMPLES));
+          if (pos) pts.push(pos);
+        }
+        pts.push({ lat: run.smoothLat, lng: run.smoothLng });
+        if (pts.length >= 2) this._trailPositions.set(runId, { run, pts });
       }
-      // Tip = current smoothed position for sub-frame accuracy
-      pts.push({ lat: run.smoothLat, lng: run.smoothLng });
+    }
 
-      if (pts.length < 2) continue;
-
-      // Project to container pixels
+    const paths = [];
+    for (const { run, pts } of this._trailPositions.values()) {
       const px = pts.map(p => {
         const pt = this.map.latLngToContainerPoint(L.latLng(p.lat, p.lng));
         return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
@@ -1038,9 +1040,11 @@ class PTVLiveMap {
 
       const totalMs = cfg.totalMinutes * 60000;
 
-      // One outbound train 25% through, one inbound train 25% through return
-      this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds],          now - totalMs * 0.25));
-      this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds].reverse(), now - totalMs * 0.25));
+      // Three trains each direction, evenly staggered across the route
+      for (const offset of [0.12, 0.45, 0.78]) {
+        this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds],           now - totalMs * offset));
+        this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds].reverse(), now - totalMs * offset));
+      }
     }
 
     this.setCount(`${this.liveRuns.size} trains (demo)`);
