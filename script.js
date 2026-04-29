@@ -50,6 +50,12 @@ class PTVLiveMap {
     this._highlightedRouteId = null;
     this.routeFilterEls      = new Map(); // routeId -> chip element
 
+    // Comet trails
+    this.trailHistory = new Map(); // runId -> [{lat,lng}, ...]
+    this.trailSvg     = null;
+    this._trailN      = 0;         // frame counter for sampling rate
+    this.showTrails   = localStorage.getItem('ptv-trails') !== '0';
+
     // Track the last data/live.json fetch time to detect stale data
     this._lastFetchedAt = null;
   }
@@ -67,6 +73,9 @@ class PTVLiveMap {
       const btn  = document.getElementById('legend-toggle');
       if (body) { body.classList.add('hidden'); if (btn) btn.textContent = '▲'; }
     }
+    this.initTrailSvg();
+    const trailToggle = document.getElementById('toggle-trails');
+    if (trailToggle) trailToggle.checked = this.showTrails;
     await this.loadNetworkData();
     await Promise.all([this.fetchLiveData(), this.loadDisruptions()]);
     this.startAnimation();
@@ -94,6 +103,21 @@ class PTVLiveMap {
     this.routeGroup = L.layerGroup().addTo(this.map);
     this.stopGroup  = L.layerGroup().addTo(this.map);
     this.trainGroup = L.layerGroup().addTo(this.map);
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  Trail SVG overlay - sits between route lines and train dots
+  // ──────────────────────────────────────────────────────────
+  initTrailSvg() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'trail-svg';
+    svg.style.cssText =
+      'position:absolute;top:0;left:0;width:100%;height:100%;' +
+      'pointer-events:none;z-index:500;overflow:visible;';
+    this.map.getContainer().appendChild(svg);
+    this.trailSvg = svg;
+    // Reproject when map pans or zooms
+    this.map.on('move zoom', () => { if (this.showTrails) this.renderTrails(); });
   }
 
   // ──────────────────────────────────────────────────────────
@@ -373,6 +397,9 @@ class PTVLiveMap {
     this._animRunning = true;
     const tick = () => {
       if (this.showTrains) this.updateTrainPositions();
+      // Render trails every 3rd frame (~20fps) - smooth enough, avoids excess SVG churn
+      if (this._trailN % 3 === 0) this.renderTrails();
+      this._trailN++;
       this.animFrame = requestAnimationFrame(tick);
     };
     this.animFrame = requestAnimationFrame(tick);
@@ -412,6 +439,14 @@ class PTVLiveMap {
       } else {
         run.smoothLat += (pos.lat - run.smoothLat) * SMOOTH;
         run.smoothLng += (pos.lng - run.smoothLng) * SMOOTH;
+      }
+
+      // Sample trail position every 6 frames (~10 samples/sec at 60fps = ~2.5s of tail)
+      if (this.showTrails && this._trailN % 6 === 0) {
+        const hist = this.trailHistory.get(runId) || [];
+        hist.push({ lat: run.smoothLat, lng: run.smoothLng });
+        if (hist.length > 25) hist.shift();
+        this.trailHistory.set(runId, hist);
       }
 
       this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run);
@@ -525,6 +560,7 @@ class PTVLiveMap {
       this.trainGroup.removeLayer(marker);
       this.trainMarkers.delete(runId);
     }
+    this.trailHistory.delete(runId);
     if (this.followedRunId === runId) {
       this.followedRunId = null;
       this.syncFollowBtn();
@@ -668,7 +704,10 @@ class PTVLiveMap {
   toggleLayer(layer, visible) {
     if (layer === 'trains') {
       this.showTrains = visible;
-      if (!visible) for (const [id] of this.trainMarkers) this.removeTrain(id);
+      if (!visible) {
+        for (const [id] of this.trainMarkers) this.removeTrain(id);
+        if (this.trailSvg) this.trailSvg.innerHTML = '';
+      }
     }
     if (layer === 'stations') {
       this.showStations = visible;
@@ -684,6 +723,58 @@ class PTVLiveMap {
         }
       }
     }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  Comet trails
+  // ──────────────────────────────────────────────────────────
+  renderTrails() {
+    if (!this.trailSvg) return;
+
+    if (!this.showTrails || !this.showTrains) {
+      this.trailSvg.innerHTML = '';
+      return;
+    }
+
+    // Opacity and width per segment, index 0 = oldest (faintest), 4 = newest (brightest)
+    const OPACITIES = [0.05, 0.13, 0.27, 0.47, 0.68];
+    const WIDTHS    = [1.5,  2,    2.5,  3,    3.5];
+    const NUM_SEGS  = OPACITIES.length;
+
+    const paths = [];
+
+    for (const [runId, run] of this.liveRuns) {
+      if (!this.activeRoutes.has(run.routeId)) continue;
+      const hist = this.trailHistory.get(runId);
+      if (!hist || hist.length < 2) continue;
+
+      // Convert geo coords to SVG pixel coords once per trail
+      const px = hist.map(p => {
+        const pt = this.map.latLngToContainerPoint(L.latLng(p.lat, p.lng));
+        return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+      });
+
+      const n = px.length;
+      for (let i = 0; i < NUM_SEGS; i++) {
+        const from = Math.floor(n * i / NUM_SEGS);
+        const to   = Math.min(n, Math.floor(n * (i + 1) / NUM_SEGS) + 1);
+        if (to - from < 2) continue;
+        const d = 'M' + px.slice(from, to).join('L');
+        paths.push(
+          `<path d="${d}" fill="none" stroke="${run.color}" ` +
+          `stroke-width="${WIDTHS[i]}" stroke-opacity="${OPACITIES[i]}" ` +
+          `stroke-linecap="round" stroke-linejoin="round"/>`
+        );
+      }
+    }
+
+    this.trailSvg.innerHTML = paths.join('');
+  }
+
+  toggleTrails(enabled) {
+    this.showTrails = enabled;
+    localStorage.setItem('ptv-trails', enabled ? '1' : '0');
+    if (!enabled && this.trailSvg) this.trailSvg.innerHTML = '';
   }
 
   // ──────────────────────────────────────────────────────────
