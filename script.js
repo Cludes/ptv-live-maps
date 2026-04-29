@@ -38,11 +38,15 @@ class PTVLiveMap {
     this.showRoutes    = true;
     this.panelOpen     = false;
     this.followedRunId = null;
+    this._infoRunId    = null;
 
-    this.pollTimer     = null;
-    this.animFrame     = null;
-    this._animRunning  = false;
-    this._demoMode     = false;
+    this.pollTimer      = null;
+    this.animFrame      = null;
+    this._animRunning   = false;
+    this._demoMode      = false;
+    this._lastPollAt    = null;
+    this._countdownTimer = null;
+    this.routeFilterEls  = new Map(); // routeId -> chip element
 
     // Track the last data/live.json fetch time to detect stale data
     this._lastFetchedAt = null;
@@ -261,8 +265,11 @@ class PTVLiveMap {
             if (run._demo) { this.removeTrain(runId); this.liveRuns.delete(runId); }
           }
         }
-        this.setCount(`${count} train${count !== 1 ? 's' : ''} active`);
+        const delayed = [...this.liveRuns.values()].filter(r => r.delayMin > 2).length;
+        const delayedStr = delayed > 0 ? `, ${delayed} delayed` : '';
+        this.setCount(`${count} train${count !== 1 ? 's' : ''} active${delayedStr}`);
         this.setLastUpdate(new Date(data.fetched_at));
+        this.updateRouteChipCounts();
         this.setSetupOverlay(count === 0);
       }
 
@@ -420,6 +427,7 @@ class PTVLiveMap {
     const run = this.liveRuns.get(runId);
     if (!run) return;
 
+    this._infoRunId    = runId;
     this.followedRunId = runId;
     this.syncFollowBtn();
 
@@ -446,12 +454,13 @@ class PTVLiveMap {
 
   closeTrainInfo() {
     this.followedRunId = null;
+    this._infoRunId    = null;
     this.syncFollowBtn();
     document.getElementById('train-info').classList.add('hidden');
   }
 
   toggleFollow() {
-    this.followedRunId = this.followedRunId ? null : this.followedRunId;
+    this.followedRunId = this.followedRunId ? null : this._infoRunId;
     this.syncFollowBtn();
   }
 
@@ -493,6 +502,7 @@ class PTVLiveMap {
     const container = document.getElementById('route-filters');
     if (!container) return;
     container.innerHTML = '';
+    this.routeFilterEls.clear();
 
     const loaded = new Set(this.routeData.keys());
 
@@ -504,7 +514,8 @@ class PTVLiveMap {
       el.className = 'rf-item';
       el.innerHTML =
         `<span class="rf-dot" style="background:${cfg.color}"></span>` +
-        `<span>${cfg.name}</span>`;
+        `<span class="rf-name">${cfg.name}</span>` +
+        `<span class="rf-count"></span>`;
 
       el.addEventListener('click', () => {
         if (this.activeRoutes.has(id)) {
@@ -520,7 +531,38 @@ class PTVLiveMap {
         }
       });
 
+      this.routeFilterEls.set(id, el);
       container.appendChild(el);
+    }
+  }
+
+  updateRouteChipCounts() {
+    const counts = new Map();
+    for (const run of this.liveRuns.values()) {
+      counts.set(run.routeId, (counts.get(run.routeId) || 0) + 1);
+    }
+    for (const [id, el] of this.routeFilterEls) {
+      const span = el.querySelector('.rf-count');
+      if (!span) continue;
+      const n = counts.get(id) || 0;
+      span.textContent = n > 0 ? n : '';
+    }
+  }
+
+  setAllRoutes(visible) {
+    const loaded = new Set(this.routeData.keys());
+    for (const id of loaded) {
+      const poly = this.routeLayers.get(id);
+      const el   = this.routeFilterEls.get(id);
+      if (visible) {
+        this.activeRoutes.add(id);
+        if (el) el.classList.remove('off');
+        if (poly && this.showRoutes) this.routeGroup.addLayer(poly);
+      } else {
+        this.activeRoutes.delete(id);
+        if (el) el.classList.add('off');
+        if (poly) this.routeGroup.removeLayer(poly);
+      }
     }
   }
 
@@ -552,6 +594,9 @@ class PTVLiveMap {
       }
       if (e.key === 'f' && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT') {
         this.toggleFullscreen();
+      }
+      if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT') {
+        this.togglePanel();
       }
     });
   }
@@ -637,7 +682,19 @@ class PTVLiveMap {
   //  Polling - re-reads data/live.json on interval
   // ──────────────────────────────────────────────────────────
   startPolling() {
-    this.pollTimer = setInterval(() => this.fetchLiveData(), CONFIG.LIVE_REFRESH_MS);
+    this._lastPollAt = Date.now();
+    this.pollTimer = setInterval(() => {
+      this._lastPollAt = Date.now();
+      this.fetchLiveData();
+    }, CONFIG.LIVE_REFRESH_MS);
+    this._countdownTimer = setInterval(() => this._tickCountdown(), 1000);
+  }
+
+  _tickCountdown() {
+    const el = document.getElementById('next-update');
+    if (!el || !this._lastPollAt) return;
+    const remaining = Math.max(0, Math.ceil((CONFIG.LIVE_REFRESH_MS - (Date.now() - this._lastPollAt)) / 1000));
+    el.textContent = remaining > 0 ? `(${remaining}s)` : '';
   }
 
   // ──────────────────────────────────────────────────────────

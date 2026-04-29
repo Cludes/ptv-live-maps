@@ -102,6 +102,7 @@ body {
 
 #train-count  { color: #fff; font-weight: 600; font-size: 13px; }
 #last-update  { color: var(--text-dim); font-size: 12px; }
+#next-update  { color: var(--text-dim); font-size: 11px; opacity: 0.6; }
 
 #api-dot { font-size: 10px; line-height: 1; }
 .dot-ok      { color: var(--green); }
@@ -316,6 +317,26 @@ input[type="checkbox"]:checked ~ .slider::after      { transform: translateX(17p
   gap: 2px;
 }
 
+.filter-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.filter-all-btn {
+  flex: 1;
+  padding: 4px 0;
+  font-size: 11px;
+  font-family: var(--font);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.filter-all-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+
 .rf-item {
   display: flex;
   align-items: center;
@@ -336,6 +357,15 @@ input[type="checkbox"]:checked ~ .slider::after      { transform: translateX(17p
   height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.rf-name { flex: 1; }
+
+.rf-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 16px;
+  text-align: right;
 }
 
 /* ---- Action buttons ---- */
@@ -605,26 +635,44 @@ kbd {
   font-style: italic;
 }
 
-/* ---- Responsive ---- */
-@media (max-width: 600px) {
-  #panel { width: 100vw; }
-  #legend { display: none; }
-  #train-info { left: 10px; right: 10px; max-width: unset; }
+/* ---- Responsive - Tablet (641px to 1024px) ---- */
+@media (min-width: 641px) and (max-width: 1024px) {
+  #header  { min-width: unset; left: 10px; right: 10px; top: 10px; }
+  #panel   { width: 300px; }
+  #legend  { right: 10px; bottom: 10px; font-size: 10px; }
+}
 
+/* ---- Responsive - Mobile (up to 640px) ---- */
+@media (max-width: 640px) {
+  #panel     { width: 100vw; }
+  #legend    { display: none; }
+  #train-info { left: 10px; right: 10px; max-width: unset; bottom: 16px; }
+
+  /* Header: stretch edge to edge, single compact row */
   #header {
     min-width: unset;
     top: 8px;
     left: 8px;
     right: 8px;
-    padding: 10px 14px;
-    gap: 10px;
+    padding: 9px 12px;
+    gap: 8px;
   }
 
-  .logo-text    { font-size: 18px; }
-  .logo-sub     { display: none; }
-  .logo-dedication { display: none; }
-  #header-divider  { display: none; }
+  /* Logo: shrink text, keep "For Alexander", hide subtitle */
+  .logo-text       { font-size: 17px; }
+  .logo-sub        { display: none; }
+  .logo-dedication { font-size: 9.5px; letter-spacing: 0.6px; margin-top: 0; }
 
-  #train-count { font-size: 12px; }
-  #last-update { display: none; }
+  /* Status: hide timestamp, keep train count small */
+  #header-divider  { display: none; }
+  #last-update     { display: none; }
+  #next-update     { display: none; }
+  #train-count     { font-size: 11px; }
+
+  /* Setup overlay: full-width card with less padding */
+  #setup-card { padding: 22px 20px; }
+  .setup-title { font-size: 17px; }
+
+  /* Panel: safe area padding for iOS home indicator */
+  #panel { padding-bottom: env(safe-area-inset-bottom, 16px); }
 }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Live Melbourne train tracker - for Alexander" />
   <title>PTV Live - Melbourne Train Tracker</title>
 
@@ -30,6 +30,7 @@
       <div id="header-status">
         <span id="train-count">Connecting...</span>
         <span id="last-update"></span>
+        <span id="next-update"></span>
         <span id="api-dot" class="dot-loading" title="Status">●</span>
       </div>
 
@@ -83,6 +84,10 @@
 
       <div class="panel-section">
         <label class="section-label">Filter Lines</label>
+        <div class="filter-actions">
+          <button class="filter-all-btn" onclick="app.setAllRoutes(true)">All</button>
+          <button class="filter-all-btn" onclick="app.setAllRoutes(false)">None</button>
+        </div>
         <div id="route-filters"></div>
       </div>
 
@@ -101,7 +106,7 @@
       <footer class="panel-footer">
         <p>Transit data &copy; <a href="https://www.ptv.vic.gov.au/" target="_blank" rel="noopener">Public Transport Victoria</a></p>
         <p>Licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
-        <p style="margin-top:8px;color:#444">Press <kbd>F</kbd> for fullscreen</p>
+        <p style="margin-top:8px;color:#444">Press <kbd>F</kbd> fullscreen &nbsp; <kbd>P</kbd> panel</p>
       </footer>
     </aside>
 
