@@ -451,14 +451,6 @@ class PTVLiveMap {
         run.smoothLng += (pos.lng - run.smoothLng) * SMOOTH;
       }
 
-      // Sample trail position every 6 frames (~10 samples/sec at 60fps = ~2.5s of tail)
-      if (this.showTrails && this._trailN % 6 === 0) {
-        const hist = this.trailHistory.get(runId) || [];
-        hist.push({ lat: run.smoothLat, lng: run.smoothLng });
-        if (hist.length > 25) hist.shift();
-        this.trailHistory.set(runId, hist);
-      }
-
       this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run);
     }
 
@@ -751,15 +743,32 @@ class PTVLiveMap {
     const WIDTHS    = [1.5,  2,    2.5,  3,    3.5];
     const NUM_SEGS  = OPACITIES.length;
 
+    // Compute trail points analytically rather than from a real-time sample buffer.
+    // A 4-minute window at suburban speeds = ~2-4 km of visible trail, works
+    // immediately on load and in demo mode without any warm-up period.
+    const SPAN_MS   = 4 * 60000;
+    const N_SAMPLES = 20;
+
+    const now   = Date.now();
     const paths = [];
 
     for (const [runId, run] of this.liveRuns) {
       if (!this.activeRoutes.has(run.routeId)) continue;
-      const hist = this.trailHistory.get(runId);
-      if (!hist || hist.length < 2) continue;
+      if (run.smoothLat === null) continue;
 
-      // Convert geo coords to SVG pixel coords once per trail
-      const px = hist.map(p => {
+      // Sample past positions at even intervals going back SPAN_MS
+      const pts = [];
+      for (let i = N_SAMPLES; i >= 1; i--) {
+        const pos = this.calculatePosition(run, now - i * (SPAN_MS / N_SAMPLES));
+        if (pos) pts.push(pos);
+      }
+      // Tip = current smoothed position for sub-frame accuracy
+      pts.push({ lat: run.smoothLat, lng: run.smoothLng });
+
+      if (pts.length < 2) continue;
+
+      // Project to container pixels
+      const px = pts.map(p => {
         const pt = this.map.latLngToContainerPoint(L.latLng(p.lat, p.lng));
         return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
       });
