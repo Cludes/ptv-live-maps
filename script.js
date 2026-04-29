@@ -31,6 +31,7 @@ class PTVLiveMap {
     this.trainMarkers = new Map(); // runId -> { marker, el }
     this.routeLayers  = new Map(); // routeId -> L.polyline
     this.stopLayers   = new Map(); // stopId  -> L.circleMarker
+    this.stopToRoutes = new Map(); // stopId  -> Set<routeId>
 
     this.activeRoutes  = new Set(Object.keys(CONFIG.ROUTES).map(Number));
     this.showTrains    = true;
@@ -44,9 +45,10 @@ class PTVLiveMap {
     this.animFrame      = null;
     this._animRunning   = false;
     this._demoMode      = false;
-    this._lastPollAt    = null;
-    this._countdownTimer = null;
-    this.routeFilterEls  = new Map(); // routeId -> chip element
+    this._lastPollAt         = null;
+    this._countdownTimer     = null;
+    this._highlightedRouteId = null;
+    this.routeFilterEls      = new Map(); // routeId -> chip element
 
     // Track the last data/live.json fetch time to detect stale data
     this._lastFetchedAt = null;
@@ -60,6 +62,11 @@ class PTVLiveMap {
     this.setupKeyboard();
     const saved = localStorage.getItem('ptv-theme');
     if (saved === 'light') this._applyTheme('light');
+    if (localStorage.getItem('ptv-legend-collapsed') === '1') {
+      const body = document.getElementById('legend-body');
+      const btn  = document.getElementById('legend-toggle');
+      if (body) { body.classList.add('hidden'); if (btn) btn.textContent = '▲'; }
+    }
     await this.loadNetworkData();
     await this.fetchLiveData();
     this.startAnimation();
@@ -129,6 +136,7 @@ class PTVLiveMap {
     this.stopGroup.clearLayers();
     this.routeLayers.clear();
     this.stopLayers.clear();
+    this.stopToRoutes.clear();
 
     for (const [routeId, route] of this.routeData) {
       if (!Array.isArray(route.stopIds) || route.stopIds.length < 2) continue;
@@ -152,6 +160,11 @@ class PTVLiveMap {
       if (this.showRoutes && this.activeRoutes.has(routeId)) {
         this.routeGroup.addLayer(poly);
       }
+
+      for (const sid of route.stopIds) {
+        if (!this.stopToRoutes.has(sid)) this.stopToRoutes.set(sid, new Set());
+        this.stopToRoutes.get(sid).add(routeId);
+      }
     }
 
     for (const [stopId, stop] of this.stopsData) {
@@ -163,7 +176,15 @@ class PTVLiveMap {
       }).bindTooltip(stop.name, { direction: 'top', offset: [0, -5] });
 
       marker.on('click', () => {
-        this.map.setView([stop.lat, stop.lng], Math.max(this.map.getZoom(), 14));
+        const routeIds = this.stopToRoutes.get(stopId) || new Set();
+        const linesDots = [...routeIds].map(rid => {
+          const r = this.routeData.get(rid);
+          return r ? `<span class="sp-dot" style="background:${r.color}" title="${r.name}"></span>` : '';
+        }).join('');
+        L.popup({ closeButton: false, className: 'station-popup', offset: [0, -6] })
+          .setLatLng([stop.lat, stop.lng])
+          .setContent(`<div class="sp-name">${stop.name}</div>${linesDots ? `<div class="sp-lines">${linesDots}</div>` : ''}`)
+          .openOn(this.map);
       });
 
       this.stopLayers.set(stopId, marker);
@@ -271,6 +292,9 @@ class PTVLiveMap {
         this.setLastUpdate(new Date(data.fetched_at));
         this.updateRouteChipCounts();
         this.setSetupOverlay(count === 0);
+
+        const ageMin = (Date.now() - Date.parse(data.fetched_at)) / 60000;
+        this.setStaleWarning(ageMin > 10 ? Math.round(ageMin) : null);
       }
 
       this.setStatus('ok');
@@ -430,6 +454,7 @@ class PTVLiveMap {
     this._infoRunId    = runId;
     this.followedRunId = runId;
     this.syncFollowBtn();
+    this._highlightRoute(run.routeId);
 
     const delayHtml = run.delayMin > 2
       ? `<span class="ti-late">+${run.delayMin} min late</span>`
@@ -439,23 +464,57 @@ class PTVLiveMap {
       ? (run.vehicle.id || run.vehicle.low_floor_description || '')
       : '';
 
+    const nextStop = this._getNextStop(run);
+    const nextStopHtml = nextStop
+      ? `<div class="ti-row"><span class="ti-label">Next stop</span><span class="ti-value">${nextStop.name}${nextStop.minsAway > 0 ? ` <span class="ti-eta">${nextStop.minsAway}m</span>` : ''}</span></div>`
+      : '';
+
     document.getElementById('train-info-body').innerHTML = `
       <div class="ti-route" style="color:${run.color}">${run.routeName} Line</div>
       <div class="ti-dest">To ${run.finalStopName || run.directionName}</div>
       <div class="ti-row"><span class="ti-label">Status</span><span class="ti-value">${delayHtml}</span></div>
-      <div class="ti-row"><span class="ti-label">Run ID</span><span class="ti-value">${run.runId}</span></div>
+      ${nextStopHtml}
       <div class="ti-row"><span class="ti-label">Direction</span><span class="ti-value">${run.directionName || '-'}</span></div>
       ${vehicleStr ? `<div class="ti-row"><span class="ti-label">Vehicle</span><span class="ti-value">${vehicleStr}</span></div>` : ''}
-      <div class="ti-row"><span class="ti-label">Stops</span><span class="ti-value">${run.stopIds.length}</span></div>
     `;
 
     document.getElementById('train-info').classList.remove('hidden');
+  }
+
+  _getNextStop(run) {
+    const stops = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
+    if (stops.length < 2) return null;
+    const elapsedMin = (Date.now() - run.hubDepartureMs) / 60000;
+    const minPerStop = run.totalMinutes / stops.length;
+    const floatIdx   = Math.max(0, run.hubStopIdx + elapsedMin / minPerStop);
+    const nextIdx    = Math.min(Math.ceil(floatIdx), stops.length - 1);
+    const minsAway   = Math.max(0, Math.round((nextIdx - floatIdx) * minPerStop));
+    return { name: stops[nextIdx].name, minsAway };
+  }
+
+  _highlightRoute(routeId) {
+    if (this._highlightedRouteId != null) {
+      const prev = this.routeLayers.get(this._highlightedRouteId);
+      if (prev) prev.setStyle({ weight: CONFIG.ROUTE_WEIGHT, opacity: CONFIG.ROUTE_OPACITY });
+    }
+    this._highlightedRouteId = routeId;
+    const poly = this.routeLayers.get(routeId);
+    if (poly) { poly.setStyle({ weight: 5, opacity: 1 }); poly.bringToFront(); }
+  }
+
+  _clearRouteHighlight() {
+    if (this._highlightedRouteId != null) {
+      const poly = this.routeLayers.get(this._highlightedRouteId);
+      if (poly) poly.setStyle({ weight: CONFIG.ROUTE_WEIGHT, opacity: CONFIG.ROUTE_OPACITY });
+      this._highlightedRouteId = null;
+    }
   }
 
   closeTrainInfo() {
     this.followedRunId = null;
     this._infoRunId    = null;
     this.syncFollowBtn();
+    this._clearRouteHighlight();
     document.getElementById('train-info').classList.add('hidden');
   }
 
@@ -763,5 +822,25 @@ class PTVLiveMap {
   setLastUpdate(date) {
     const el = document.getElementById('last-update');
     if (el) el.textContent = `Data: ${date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  setStaleWarning(ageMin) {
+    const el = document.getElementById('stale-warning');
+    if (!el) return;
+    if (ageMin == null) {
+      el.classList.add('hidden');
+    } else {
+      el.textContent = `Data ${ageMin}m old`;
+      el.classList.remove('hidden');
+    }
+  }
+
+  toggleLegend() {
+    const body = document.getElementById('legend-body');
+    const btn  = document.getElementById('legend-toggle');
+    if (!body) return;
+    const collapsed = body.classList.toggle('hidden');
+    if (btn) btn.textContent = collapsed ? '▲' : '▼';
+    try { localStorage.setItem('ptv-legend-collapsed', collapsed ? '1' : '0'); } catch {}
   }
 }
