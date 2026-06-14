@@ -1,0 +1,40 @@
+name: Deploy to Cloudflare Pages
+
+# Builds the static site + the /api/vehicles Pages Function and deploys them to
+# the ptv-live-maps Pages project (https://ptv-live-maps.pages.dev) on every push.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Installs gtfs-realtime-bindings (root package.json) so the Pages Function bundles.
+      - run: npm install
+
+      # Assemble only the static assets to upload (functions/ is compiled separately).
+      - name: Assemble static output
+        run: |
+          mkdir -p dist
+          cp index.html styles.css script.js config.js dist/
+          cp -r data dist/
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # functions/ at repo root is compiled and bundled automatically.
+          command: pages deploy dist --project-name=ptv-live-maps --branch=master
