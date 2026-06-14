@@ -2,5 +2,8 @@
   "name": "ptv-live-maps",
   "version": "1.0.0",
   "description": "Live Melbourne train tracker for GitHub Pages",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "gtfs-realtime-bindings": "^1.1.1"
+  }
 }
