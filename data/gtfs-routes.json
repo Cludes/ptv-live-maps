@@ -1,0 +1,147 @@
+{
+  "aus:vic:vic-02-ALM:": {
+    "name": "Alamein",
+    "color": "#094FA3",
+    "appRouteId": 1
+  },
+  "aus:vic:vic-02-BEG:": {
+    "name": "Belgrave",
+    "color": "#094FA3",
+    "appRouteId": 2
+  },
+  "aus:vic:vic-02-CBE:": {
+    "name": "Cranbourne",
+    "color": "#16B4E8",
+    "appRouteId": 4
+  },
+  "aus:vic:vic-02-CGB:": {
+    "name": "Craigieburn",
+    "color": "#F7A500",
+    "appRouteId": 3
+  },
+  "aus:vic:vic-02-FKN:": {
+    "name": "Frankston",
+    "color": "#008B50",
+    "appRouteId": 5
+  },
+  "aus:vic:vic-02-GWY:": {
+    "name": "Glen Waverley",
+    "color": "#094FA3",
+    "appRouteId": 6
+  },
+  "aus:vic:vic-02-HBE:": {
+    "name": "Hurstbridge",
+    "color": "#E4222B",
+    "appRouteId": 7
+  },
+  "aus:vic:vic-02-LIL:": {
+    "name": "Lilydale",
+    "color": "#094FA3",
+    "appRouteId": 8
+  },
+  "aus:vic:vic-02-MDD:": {
+    "name": "Mernda",
+    "color": "#E4222B",
+    "appRouteId": 9
+  },
+  "aus:vic:vic-02-PKM:": {
+    "name": "Pakenham",
+    "color": "#16B4E8",
+    "appRouteId": 11
+  },
+  "aus:vic:vic-02-SHM:": {
+    "name": "Sandringham",
+    "color": "#F0A0C8",
+    "appRouteId": 12
+  },
+  "aus:vic:vic-02-STY:": {
+    "name": "Stony Point",
+    "color": "#888888",
+    "appRouteId": 14
+  },
+  "aus:vic:vic-02-SUY:": {
+    "name": "Sunbury",
+    "color": "#F7A500",
+    "appRouteId": 15
+  },
+  "aus:vic:vic-02-UFD:": {
+    "name": "Upfield",
+    "color": "#F7A500",
+    "appRouteId": 16
+  },
+  "aus:vic:vic-02-WER:": {
+    "name": "Werribee",
+    "color": "#008B50",
+    "appRouteId": 17
+  },
+  "aus:vic:vic-02-WIL:": {
+    "name": "Williamstown",
+    "color": "#008B50",
+    "appRouteId": 18
+  },
+  "aus:vic:vic-01-ABY:": {
+    "name": "Seymour / Albury",
+    "color": "#00629B",
+    "appRouteId": 3005
+  },
+  "aus:vic:vic-01-ART:": {
+    "name": "Ballarat",
+    "color": "#7B2D8B",
+    "appRouteId": 3002
+  },
+  "aus:vic:vic-01-BAT:": {
+    "name": "Ballarat",
+    "color": "#7B2D8B",
+    "appRouteId": 3002
+  },
+  "aus:vic:vic-01-BDE:": {
+    "name": "Gippsland",
+    "color": "#E57200",
+    "appRouteId": 3004
+  },
+  "aus:vic:vic-01-BGO:": {
+    "name": "Bendigo",
+    "color": "#D4006A",
+    "appRouteId": 3003
+  },
+  "aus:vic:vic-01-ECH:": {
+    "name": "Bendigo",
+    "color": "#D4006A",
+    "appRouteId": 3003
+  },
+  "aus:vic:vic-01-GEL:": {
+    "name": "Geelong / Warrnambool",
+    "color": "#00B2A9",
+    "appRouteId": 3001
+  },
+  "aus:vic:vic-01-MBY:": {
+    "name": "Ballarat",
+    "color": "#7B2D8B",
+    "appRouteId": 3002
+  },
+  "aus:vic:vic-01-SER:": {
+    "name": "Seymour / Albury",
+    "color": "#00629B",
+    "appRouteId": 3005
+  },
+  "aus:vic:vic-01-SNH:": {
+    "name": "Seymour / Albury",
+    "color": "#00629B",
+    "appRouteId": 3005
+  },
+  "aus:vic:vic-01-SWL:": {
+    "name": "Bendigo",
+    "color": "#D4006A",
+    "appRouteId": 3003
+  },
+  "aus:vic:vic-01-TRN:": {
+    "name": "Gippsland",
+    "color": "#E57200",
+    "appRouteId": 3004
+  },
+  "aus:vic:vic-01-WBL:": {
+    "name": "Geelong / Warrnambool",
+    "color": "#00B2A9",
+    "appRouteId": 3001
+  }
+}

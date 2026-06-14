@@ -68,6 +68,8 @@ class PTVLiveMap {
     this.gpsMarkers  = new Map(); // id -> { marker, el }
     this.showGPS     = false;
     this.gpsTimer    = null;
+    this.gtfsRoutes  = {};        // gtfs route_id -> { name, color, appRouteId }
+    this.gtfsRoutesNorm = {};     // normalised route_id -> meta (tolerant lookup for the live feed)
   }
 
   // ──────────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ class PTVLiveMap {
     const trailToggle = document.getElementById('toggle-trails');
     if (trailToggle) trailToggle.checked = this.showTrails;
     await this.loadNetworkData();
-    await Promise.all([this.fetchLiveData(), this.loadDisruptions()]);
+    await Promise.all([this.fetchLiveData(), this.loadDisruptions(), this.loadGtfsRoutes()]);
     this.startAnimation();
     this.startPolling();
     this.initGPS();
@@ -201,10 +203,14 @@ class PTVLiveMap {
     for (const [routeId, route] of this.routeData) {
       if (!Array.isArray(route.stopIds) || route.stopIds.length < 2) continue;
 
-      const coords = route.stopIds
-        .map(id => this.stopsData.get(id))
-        .filter(Boolean)
-        .map(s => [s.lat, s.lng]);
+      // Prefer real GTFS track geometry (route.shape) for the line; fall back
+      // to straight hops between stations for older network.json without shapes.
+      const coords = (Array.isArray(route.shape) && route.shape.length >= 2)
+        ? route.shape
+        : route.stopIds
+            .map(id => this.stopsData.get(id))
+            .filter(Boolean)
+            .map(s => [s.lat, s.lng]);
 
       if (coords.length < 2) continue;
 
@@ -387,6 +393,30 @@ class PTVLiveMap {
   // ──────────────────────────────────────────────────────────
   //  Disruptions
   // ──────────────────────────────────────────────────────────
+  // gtfs route_id -> { name, color, appRouteId }, used to colour the live GPS layer.
+  async loadGtfsRoutes() {
+    try {
+      const res = await fetch(`data/gtfs-routes.json?t=${Date.now()}`);
+      if (!res.ok) return;
+      this.gtfsRoutes = await res.json();
+      for (const [rid, meta] of Object.entries(this.gtfsRoutes)) {
+        this.gtfsRoutesNorm[this._normRouteId(rid)] = meta;
+      }
+    } catch {
+      // Non-fatal: GPS arrows just fall back to the default colour
+    }
+  }
+
+  _normRouteId(rid) {
+    return String(rid).toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  // Resolve a live-feed route_id to its line metadata (tolerant of id formatting).
+  _gpsRouteMeta(routeId) {
+    if (routeId == null) return null;
+    return this.gtfsRoutes[routeId] || this.gtfsRoutesNorm[this._normRouteId(routeId)] || null;
+  }
+
   async loadDisruptions() {
     try {
       const res  = await fetch(`data/disruptions.json?t=${Date.now()}`);
@@ -813,6 +843,8 @@ class PTVLiveMap {
   upsertGPSMarker(id, v) {
     const latlng = [v.curLat, v.curLng];
     const rot    = v.bearing != null ? v.bearing : 0;
+    const meta   = this._gpsRouteMeta(v.route_id);
+    const color  = (meta && meta.color) || CONFIG.GPS_COLOR;
 
     if (this.gpsMarkers.has(id)) {
       const { marker, el } = this.gpsMarkers.get(id);
@@ -823,12 +855,13 @@ class PTVLiveMap {
       el.className   = 'gps-arrow';
       el.style.cssText = `transform:rotate(${rot}deg);`;
       // Navigation arrow points up at bearing 0 (north); GTFS bearing is deg clockwise from north
-      el.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="${CONFIG.GPS_COLOR}" ` +
-        `style="filter:drop-shadow(0 0 4px ${CONFIG.GPS_COLOR})"><path d="M12 2 L19 21 L12 16 L5 21 Z"/></svg>`;
+      el.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="${color}" ` +
+        `style="filter:drop-shadow(0 0 4px ${color})"><path d="M12 2 L19 21 L12 16 L5 21 Z"/></svg>`;
 
       const icon = L.divIcon({ html: el, className: '', iconSize: [20, 20], iconAnchor: [10, 10] });
       const marker = L.marker(latlng, { icon, zIndexOffset: 600 });
-      if (v.route_id) marker.bindTooltip(`Live GPS - route ${v.route_id}`, { direction: 'top' });
+      const label = meta ? `${meta.name} line (live GPS)` : `Live GPS - route ${v.route_id}`;
+      marker.bindTooltip(label, { direction: 'top' });
 
       this.gpsGroup.addLayer(marker);
       this.gpsMarkers.set(id, { marker, el });
@@ -1158,9 +1191,22 @@ class PTVLiveMap {
     const now = Date.now();
     let id = 9000;
 
-    for (const [routeIdStr, stopIds] of Object.entries(CONFIG.DEMO_STOPS)) {
-      const routeId = Number(routeIdStr);
-      const cfg     = CONFIG.ROUTES[routeId];
+    // Prefer the real stop sequences from the loaded network; fall back to the
+    // seeded CONFIG.DEMO_STOPS only if the network has no stopIds.
+    const sequences = [];
+    for (const [routeId, route] of this.routeData) {
+      if (Array.isArray(route.stopIds) && route.stopIds.length >= 2) {
+        sequences.push([routeId, route.stopIds]);
+      }
+    }
+    if (!sequences.length) {
+      for (const [routeIdStr, stopIds] of Object.entries(CONFIG.DEMO_STOPS)) {
+        sequences.push([Number(routeIdStr), stopIds]);
+      }
+    }
+
+    for (const [routeId, stopIds] of sequences) {
+      const cfg = CONFIG.ROUTES[routeId] || this.routeData.get(routeId);
       if (!cfg) continue;
 
       const totalMs = cfg.totalMinutes * 60000;
