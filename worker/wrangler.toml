@@ -1,0 +1,12 @@
+name = "ptv-gtfsr"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# The feed URL is not secret. Paste the EXACT "Metro Train - Vehicle Positions"
+# endpoint shown in your Transport Victoria Open Data Portal account (each feed
+# lists its URL once you're logged in).
+[vars]
+FEED_URL = "PASTE_METRO_TRAIN_VEHICLE_POSITIONS_URL_FROM_YOUR_PORTAL"
+
+# PTV_KEYID is a SECRET - do NOT put it here. Set it once with:
+#   npx wrangler secret put PTV_KEYID

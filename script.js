@@ -23,6 +23,7 @@ class PTVLiveMap {
     this.routeGroup   = null;
     this.stopGroup    = null;
     this.trainGroup   = null;
+    this.gpsGroup     = null;
 
     this.routeData    = new Map(); // routeId -> { id, name, color, totalMinutes, stopIds }
     this.stopsData    = new Map(); // stopId  -> { id, name, lat, lng }
@@ -61,6 +62,12 @@ class PTVLiveMap {
 
     // Track the last data/live.json fetch time to detect stale data
     this._lastFetchedAt = null;
+
+    // ---- Live GPS layer (real positions from the Cloudflare Worker) ----
+    this.gpsVehicles = new Map(); // id -> { fromLat, fromLng, toLat, toLng, bearing, route_id, t0 }
+    this.gpsMarkers  = new Map(); // id -> { marker, el }
+    this.showGPS     = false;
+    this.gpsTimer    = null;
   }
 
   // ──────────────────────────────────────────────────────────
@@ -83,6 +90,21 @@ class PTVLiveMap {
     await Promise.all([this.fetchLiveData(), this.loadDisruptions()]);
     this.startAnimation();
     this.startPolling();
+    this.initGPS();
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  Live GPS layer - real positions polled from the Worker.
+  //  Only activates when CONFIG.WORKER_URL is set; otherwise the
+  //  toggle stays hidden and the timetable layer runs unchanged.
+  // ──────────────────────────────────────────────────────────
+  initGPS() {
+    if (!CONFIG.WORKER_URL) return;
+    const row = document.getElementById('row-gps');
+    if (row) row.style.display = '';
+    this.showGPS = true;
+    this.fetchGPS();
+    this.startGPSPolling();
   }
 
   // ──────────────────────────────────────────────────────────
@@ -108,6 +130,7 @@ class PTVLiveMap {
     this.routeGroup = L.layerGroup().addTo(this.map);
     this.stopGroup  = L.layerGroup().addTo(this.map);
     this.trainGroup = L.layerGroup().addTo(this.map);
+    this.gpsGroup   = L.layerGroup().addTo(this.map);
   }
 
   // ──────────────────────────────────────────────────────────
@@ -410,6 +433,7 @@ class PTVLiveMap {
     this._animRunning = true;
     const tick = () => {
       if (this.showTrains) this.updateTrainPositions();
+      if (this.showGPS) this.updateGPSPositions();
       // Render trails every 3rd frame (~20fps) - smooth enough, avoids excess SVG churn
       if (this._trailN % 3 === 0) this.renderTrails();
       this._trailN++;
@@ -728,6 +752,107 @@ class PTVLiveMap {
         }
       }
     }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  Live GPS - real vehicle positions from the Worker
+  // ──────────────────────────────────────────────────────────
+  async fetchGPS() {
+    try {
+      const res = await fetch(CONFIG.WORKER_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const now  = Date.now();
+      const seen = new Set();
+
+      for (const v of data.vehicles || []) {
+        if (v.lat == null || v.lon == null) continue;
+        seen.add(v.id);
+        const existing = this.gpsVehicles.get(v.id);
+        if (existing) {
+          // Interpolate from where it's currently shown toward the new fix
+          existing.fromLat  = existing.curLat;
+          existing.fromLng  = existing.curLng;
+          existing.toLat    = v.lat;
+          existing.toLng    = v.lon;
+          existing.bearing  = v.bearing;
+          existing.route_id = v.route_id;
+          existing.t0       = now;
+        } else {
+          this.gpsVehicles.set(v.id, {
+            fromLat: v.lat, fromLng: v.lon,
+            toLat:   v.lat, toLng:   v.lon,
+            curLat:  v.lat, curLng:  v.lon,
+            bearing: v.bearing, route_id: v.route_id, t0: now,
+          });
+        }
+      }
+
+      // Drop vehicles that left the feed
+      for (const [id] of this.gpsVehicles) {
+        if (!seen.has(id)) {
+          this.gpsVehicles.delete(id);
+          this.removeGPSMarker(id);
+        }
+      }
+    } catch (err) {
+      console.error('[PTV] GPS fetch failed:', err.message);
+    }
+  }
+
+  updateGPSPositions() {
+    const now = Date.now();
+    for (const [id, v] of this.gpsVehicles) {
+      const t = Math.min(1, (now - v.t0) / CONFIG.GPS_REFRESH_MS);
+      v.curLat = v.fromLat + (v.toLat - v.fromLat) * t;
+      v.curLng = v.fromLng + (v.toLng - v.fromLng) * t;
+      this.upsertGPSMarker(id, v);
+    }
+  }
+
+  upsertGPSMarker(id, v) {
+    const latlng = [v.curLat, v.curLng];
+    const rot    = v.bearing != null ? v.bearing : 0;
+
+    if (this.gpsMarkers.has(id)) {
+      const { marker, el } = this.gpsMarkers.get(id);
+      marker.setLatLng(latlng);
+      if (el) el.style.transform = `rotate(${rot}deg)`;
+    } else {
+      const el = document.createElement('div');
+      el.className   = 'gps-arrow';
+      el.style.cssText = `transform:rotate(${rot}deg);`;
+      // Navigation arrow points up at bearing 0 (north); GTFS bearing is deg clockwise from north
+      el.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="${CONFIG.GPS_COLOR}" ` +
+        `style="filter:drop-shadow(0 0 4px ${CONFIG.GPS_COLOR})"><path d="M12 2 L19 21 L12 16 L5 21 Z"/></svg>`;
+
+      const icon = L.divIcon({ html: el, className: '', iconSize: [20, 20], iconAnchor: [10, 10] });
+      const marker = L.marker(latlng, { icon, zIndexOffset: 600 });
+      if (v.route_id) marker.bindTooltip(`Live GPS - route ${v.route_id}`, { direction: 'top' });
+
+      this.gpsGroup.addLayer(marker);
+      this.gpsMarkers.set(id, { marker, el });
+    }
+  }
+
+  removeGPSMarker(id) {
+    if (this.gpsMarkers.has(id)) {
+      const { marker } = this.gpsMarkers.get(id);
+      this.gpsGroup.removeLayer(marker);
+      this.gpsMarkers.delete(id);
+    }
+  }
+
+  toggleGPS(visible) {
+    this.showGPS = visible;
+    if (!visible) {
+      for (const [id] of this.gpsMarkers) this.removeGPSMarker(id);
+    }
+  }
+
+  startGPSPolling() {
+    if (this.gpsTimer) clearInterval(this.gpsTimer);
+    this.gpsTimer = setInterval(() => this.fetchGPS(), CONFIG.GPS_REFRESH_MS);
   }
 
   // ──────────────────────────────────────────────────────────

@@ -26,6 +26,13 @@ const CONFIG = {
   // Cache-busting query param is appended so the browser always gets the latest version.
   LIVE_REFRESH_MS: 60000, // 60s - data only changes every ~60s, no gain polling faster
 
+  // ---- Live GPS layer (real positions via the Cloudflare Worker / GTFS-Realtime) ----
+  // Deploy worker/ then paste its URL here, e.g. 'https://ptv-gtfsr.<subdomain>.workers.dev'.
+  // Leave empty to disable the real-GPS layer (the timetable layer keeps working unchanged).
+  WORKER_URL:     '',
+  GPS_REFRESH_MS: 20000,    // poll the Worker every 20s (matches its 20s edge cache)
+  GPS_COLOR:      '#00E5FF', // accent colour for real-GPS trains (distinct from timetable dots)
+
   // ---- Melbourne metro routes ----
   ROUTES: {
     1:  { name: 'Alamein',       color: '#094FA3', totalMinutes: 30,  group: 'blue'   },
