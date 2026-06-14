@@ -105,8 +105,8 @@ class PTVLiveMap {
   // ──────────────────────────────────────────────────────────
   initGPS() {
     if (!CONFIG.WORKER_URL) return;
-    const row = document.getElementById('row-gps');
-    if (row) row.style.display = '';
+    // Start polling, but only reveal the toggle once the Worker actually returns
+    // vehicle data (i.e. after the API key is added) - no dead toggle before then.
     this.showGPS = true;
     this.fetchGPS();
     this.startGPSPolling();
@@ -256,10 +256,10 @@ class PTVLiveMap {
       this.stationTiers.set(stopId, tier);
 
       const style = tier === 2
-        ? { radius: 5,   fillColor: '#ffffff', fillOpacity: 1,    stroke: true, color: '#0d0d0d', weight: 1.6 }
+        ? { radius: 4.5, fillColor: '#ffffff', fillOpacity: 1,    stroke: true, color: '#0d0d0d', weight: 1.6 }
         : tier === 1
-          ? { radius: 3.6, fillColor: '#ffffff', fillOpacity: 0.8, stroke: false }
-          : { radius: 2.6, fillColor: '#ffffff', fillOpacity: 0.45, stroke: false };
+          ? { radius: 3,   fillColor: '#ffffff', fillOpacity: 0.7, stroke: false }
+          : { radius: 2,   fillColor: '#ffffff', fillOpacity: 0.3, stroke: false };
 
       const marker = L.circleMarker([stop.lat, stop.lng], style)
         .bindTooltip(stop.name, { direction: 'top', offset: [0, -5] });
@@ -324,8 +324,9 @@ class PTVLiveMap {
 
     for (const [stopId, marker] of this.stopLayers) {
       const tier    = this.stationTiers.get(stopId) || 0;
-      // Major interchanges always show; minor/regular drop off as you zoom out past the default view.
-      const minZoom = tier >= 2 ? 0 : tier === 1 ? 10 : 11;
+      // Major interchanges always show; minor at z>=11; ordinary stops only once zoomed in (z>=12)
+      // so the city-wide view stays clean and the coloured lines + live trains read clearly.
+      const minZoom = tier >= 2 ? 0 : tier === 1 ? 11 : 12;
       const show    = this.showStations && z >= minZoom;
       const on      = this.stopGroup.hasLayer(marker);
       if (show && !on) this.stopGroup.addLayer(marker);
@@ -857,6 +858,12 @@ class PTVLiveMap {
       const now  = Date.now();
       const seen = new Set();
 
+      // Reveal the Live GPS toggle the first time the Worker returns real data.
+      if (Array.isArray(data.vehicles)) {
+        const row = document.getElementById('row-gps');
+        if (row && row.style.display === 'none') row.style.display = '';
+      }
+
       for (const v of data.vehicles || []) {
         if (v.lat == null || v.lon == null) continue;
         seen.add(v.id);
@@ -1273,8 +1280,8 @@ class PTVLiveMap {
 
       const totalMs = cfg.totalMinutes * 60000;
 
-      // Three trains each direction, evenly staggered across the route
-      for (const offset of [0.12, 0.45, 0.78]) {
+      // Two trains each direction, evenly staggered across the route (demo only)
+      for (const offset of [0.28, 0.72]) {
         this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds],           now - totalMs * offset));
         this.liveRuns.set(id, this._makeDemoRun(id++, routeId, cfg, [...stopIds].reverse(), now - totalMs * offset));
       }
