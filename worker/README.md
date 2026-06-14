@@ -11,10 +11,13 @@ for 20s so many visitors polling at once don't exceed the feed's ~24 calls/60s l
 
 1. **Get a key (instant):** create an account at https://opendata.transport.vic.gov.au
    - Your `KeyID` is generated automatically on signup (Profile / API key).
-   - Open the "GTFS Realtime - Metro Train - Vehicle Positions" resource and copy its
-     exact endpoint URL.
+   - You do NOT need to find the feed URL - it's already set in `wrangler.toml`
+     (`.../gtfs/realtime/v1/metro/vehicle-positions`, confirmed live 2026-06-14).
 
-2. **Configure:** edit `wrangler.toml` and set `FEED_URL` to that endpoint URL.
+2. **(Already done):** `FEED_URL` is pre-filled. The endpoint authenticates via the `KeyID`
+   request header (verified against the live server's auth challenge), which the Worker sends
+   for you. The OpenAPI spec mislabels it as `Ocp-Apim-Subscription-Key` - ignore that; the
+   live gateway wants `KeyID`.
 
 3. **Install + set the secret key:**
    ```bash
