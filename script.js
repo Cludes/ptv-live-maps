@@ -33,6 +33,9 @@ class PTVLiveMap {
     this.routeLayers  = new Map(); // routeId -> L.polyline
     this.stopLayers   = new Map(); // stopId  -> L.circleMarker
     this.stopToRoutes = new Map(); // stopId  -> Set<routeId>
+    this.stationTiers = new Map(); // stopId  -> 0 regular | 1 minor interchange | 2 major interchange
+    this.stationLabels = [];       // L.marker label icons for major interchanges (shown at high zoom)
+    this.labelGroup   = null;
 
     this.activeRoutes  = new Set(Object.keys(CONFIG.ROUTES).map(Number));
     this.showTrains    = true;
@@ -131,8 +134,12 @@ class PTVLiveMap {
 
     this.routeGroup = L.layerGroup().addTo(this.map);
     this.stopGroup  = L.layerGroup().addTo(this.map);
+    this.labelGroup = L.layerGroup().addTo(this.map);
     this.trainGroup = L.layerGroup().addTo(this.map);
     this.gpsGroup   = L.layerGroup().addTo(this.map);
+
+    // Zoom-aware detail: reveal minor stations + labels as you zoom in.
+    this.map.on('zoomend', () => this.updateZoomDetail());
   }
 
   // ──────────────────────────────────────────────────────────
@@ -177,7 +184,8 @@ class PTVLiveMap {
         this.routeData.set(Number(id), r);
       }
       for (const [id, s] of Object.entries(data.stops)) {
-        this.stopsData.set(Number(id), s);
+        // Stop IDs stay strings - GTFS station keys are non-numeric (e.g. "vic:rail:FSS").
+        this.stopsData.set(id, s);
       }
 
       this.renderNetwork();
@@ -196,9 +204,12 @@ class PTVLiveMap {
   renderNetwork() {
     this.routeGroup.clearLayers();
     this.stopGroup.clearLayers();
+    this.labelGroup.clearLayers();
     this.routeLayers.clear();
     this.stopLayers.clear();
     this.stopToRoutes.clear();
+    this.stationTiers.clear();
+    this.stationLabels = [];
 
     for (const [routeId, route] of this.routeData) {
       if (!Array.isArray(route.stopIds) || route.stopIds.length < 2) continue;
@@ -219,7 +230,12 @@ class PTVLiveMap {
         weight:       CONFIG.ROUTE_WEIGHT,
         opacity:      CONFIG.ROUTE_OPACITY,
         smoothFactor: 1,
+        lineCap:      'round',
+        lineJoin:     'round',
+        className:    'route-line',
       });
+      // Set CSS color on the SVG path so the casing/glow filter (currentColor) tints per line.
+      poly.on('add', () => { if (poly._path) poly._path.style.color = route.color; });
       poly.bindTooltip(route.name + ' Line', { sticky: true, direction: 'top' });
 
       this.routeLayers.set(routeId, poly);
@@ -234,12 +250,27 @@ class PTVLiveMap {
     }
 
     for (const [stopId, stop] of this.stopsData) {
-      const marker = L.circleMarker([stop.lat, stop.lng], {
-        radius:      3.5,
-        fillColor:   '#ffffff',
-        fillOpacity: 0.4,
-        stroke:      false,
-      }).bindTooltip(stop.name, { direction: 'top', offset: [0, -5] });
+      // Station hierarchy: bigger ringed markers for interchanges, small dots for single-line stops.
+      const lineCount = (this.stopToRoutes.get(stopId) || new Set()).size;
+      const tier = lineCount >= 3 ? 2 : lineCount === 2 ? 1 : 0;
+      this.stationTiers.set(stopId, tier);
+
+      const style = tier === 2
+        ? { radius: 5,   fillColor: '#ffffff', fillOpacity: 1,    stroke: true, color: '#0d0d0d', weight: 1.6 }
+        : tier === 1
+          ? { radius: 3.6, fillColor: '#ffffff', fillOpacity: 0.8, stroke: false }
+          : { radius: 2.6, fillColor: '#ffffff', fillOpacity: 0.45, stroke: false };
+
+      const marker = L.circleMarker([stop.lat, stop.lng], style)
+        .bindTooltip(stop.name, { direction: 'top', offset: [0, -5] });
+
+      // Permanent name label for major interchanges, revealed at high zoom.
+      if (tier === 2) {
+        this.stationLabels.push(L.marker([stop.lat, stop.lng], {
+          icon: L.divIcon({ className: 'stn-label', html: stop.name, iconSize: [0, 0], iconAnchor: [-7, 6] }),
+          interactive: false, keyboard: false, pane: 'tooltipPane',
+        }));
+      }
 
       marker.on('click', () => {
         const routeIds  = this.stopToRoutes.get(stopId) || new Set();
@@ -273,7 +304,39 @@ class PTVLiveMap {
       });
 
       this.stopLayers.set(stopId, marker);
-      if (this.showStations) this.stopGroup.addLayer(marker);
+    }
+
+    // Apply zoom-based station/label visibility now that markers exist.
+    this.updateZoomDetail();
+
+    // Gentle fade-in as the network draws on first load.
+    const container = this.map.getContainer();
+    container.classList.add('net-fade');
+    setTimeout(() => container.classList.remove('net-fade'), 1000);
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  Zoom-aware detail - declutter at city view, reveal on zoom-in
+  // ──────────────────────────────────────────────────────────
+  updateZoomDetail() {
+    if (!this.map) return;
+    const z = this.map.getZoom();
+
+    for (const [stopId, marker] of this.stopLayers) {
+      const tier    = this.stationTiers.get(stopId) || 0;
+      // Major interchanges always show; minor/regular drop off as you zoom out past the default view.
+      const minZoom = tier >= 2 ? 0 : tier === 1 ? 10 : 11;
+      const show    = this.showStations && z >= minZoom;
+      const on      = this.stopGroup.hasLayer(marker);
+      if (show && !on) this.stopGroup.addLayer(marker);
+      else if (!show && on) this.stopGroup.removeLayer(marker);
+    }
+
+    const showLabels = this.showStations && z >= 13;
+    for (const lbl of this.stationLabels) {
+      const on = this.labelGroup.hasLayer(lbl);
+      if (showLabels && !on) this.labelGroup.addLayer(lbl);
+      else if (!showLabels && on) this.labelGroup.removeLayer(lbl);
     }
   }
 
@@ -770,8 +833,7 @@ class PTVLiveMap {
     }
     if (layer === 'stations') {
       this.showStations = visible;
-      this.stopGroup.clearLayers();
-      if (visible) for (const [, m] of this.stopLayers) this.stopGroup.addLayer(m);
+      this.updateZoomDetail();
     }
     if (layer === 'routes') {
       this.showRoutes = visible;
