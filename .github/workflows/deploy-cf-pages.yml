@@ -28,7 +28,7 @@ jobs:
       - name: Assemble static output
         run: |
           mkdir -p dist
-          cp index.html styles.css script.js config.js dist/
+          cp index.html styles.css script.js config.js favicon.svg dist/
           cp -r data dist/
 
       - name: Deploy to Cloudflare Pages

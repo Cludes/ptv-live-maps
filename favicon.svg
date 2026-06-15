@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#101418"/>
+  <!-- train body -->
+  <rect x="18" y="11" width="28" height="35" rx="10" fill="#00d4ff"/>
+  <!-- windscreen -->
+  <rect x="23" y="17" width="18" height="11" rx="3" fill="#101418"/>
+  <!-- headlights -->
+  <circle cx="25.5" cy="38" r="2.6" fill="#101418"/>
+  <circle cx="38.5" cy="38" r="2.6" fill="#101418"/>
+  <!-- bogies -->
+  <rect x="22" y="46" width="6" height="6" rx="2" fill="#00d4ff"/>
+  <rect x="36" y="46" width="6" height="6" rx="2" fill="#00d4ff"/>
+  <!-- motion sparks on the rails -->
+  <path d="M20 56 l-6 5 M44 56 l6 5" stroke="#00d4ff" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+</svg>
