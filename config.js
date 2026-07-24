@@ -79,7 +79,7 @@ const CONFIG = {
   },
 
   // ---- Visual ----
-  ROUTE_WEIGHT:   2.5,
+  ROUTE_WEIGHT:   2,
   ROUTE_OPACITY:  0.75,
   TRAIN_DOT_SIZE: 14,
 

@@ -43,6 +43,7 @@ class PTVLiveMap {
     this.showRoutes    = true;
     this.panelOpen     = false;
     this.followedRunId = null;
+    this.delayedOnly   = false;
     this._infoRunId    = null;
 
     this.pollTimer      = null;
@@ -436,8 +437,8 @@ class PTVLiveMap {
           }
         }
         const delayed = [...this.liveRuns.values()].filter(r => r.delayMin > 2).length;
-        const delayedStr = delayed > 0 ? `, ${delayed} delayed` : '';
-        this.setCount(`${count} train${count !== 1 ? 's' : ''} active${delayedStr}`);
+        this.setCount(`${count} train${count !== 1 ? 's' : ''} active`);
+        this.setDelayChip(delayed);
         this.setLastUpdate(new Date(data.fetched_at));
         this.updateRouteChipCounts();
         this.setSetupOverlay(count === 0);
@@ -549,6 +550,16 @@ class PTVLiveMap {
         continue;
       }
 
+      // "Delayed only" filter: drop on-time trains from the DOM while active.
+      if (this.delayedOnly && !(run.delayMin > 2)) {
+        if (this.trainMarkers.has(runId)) {
+          const { marker } = this.trainMarkers.get(runId);
+          this.trainGroup.removeLayer(marker);
+          this.trainMarkers.delete(runId);
+        }
+        continue;
+      }
+
       // Demo: reverse direction when reaching the end of the route
       if (run._demo) {
         const stops = this._resolveStops(run);
@@ -579,7 +590,7 @@ class PTVLiveMap {
       // Keep interpolating every train's position (cheap), but only touch the DOM
       // for those in/near the viewport; off-screen ones shed their marker.
       if (bounds.contains([run.smoothLat, run.smoothLng])) {
-        this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run);
+        this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run, pos.heading);
       } else if (this.trainMarkers.has(runId)) {
         const { marker } = this.trainMarkers.get(runId);
         this.trainGroup.removeLayer(marker);
@@ -658,45 +669,62 @@ class PTVLiveMap {
 
     if (nextIdx >= stops.length) {
       const last = stops[stops.length - 1];
-      return { lat: last.lat, lng: last.lng };
+      return { lat: last.lat, lng: last.lng, heading: null };
     }
+    const a = stops[prevIdx], b = stops[nextIdx];
+    // Heading (deg clockwise from north) of the current segment - stable near stops.
+    const dLng = (b.lng - a.lng) * Math.cos(a.lat * Math.PI / 180);
+    const heading = (Math.atan2(dLng, b.lat - a.lat) * 180 / Math.PI + 360) % 360;
     return {
-      lat: stops[prevIdx].lat + (stops[nextIdx].lat - stops[prevIdx].lat) * t,
-      lng: stops[prevIdx].lng + (stops[nextIdx].lng - stops[prevIdx].lng) * t,
+      lat: a.lat + (b.lat - a.lat) * t,
+      lng: a.lng + (b.lng - a.lng) * t,
+      heading,
     };
   }
 
   // ──────────────────────────────────────────────────────────
   //  Train marker management
   // ──────────────────────────────────────────────────────────
-  upsertTrainMarker(runId, lat, lng, run) {
-    const latlng = [lat, lng];
-    const isLate = run.delayMin > 2;
+  upsertTrainMarker(runId, lat, lng, run, heading) {
+    const latlng   = [lat, lng];
+    const delayCls = run.delayMin >= 10 ? 'delay-major' : run.delayMin > 2 ? 'delay-minor' : '';
 
     if (this.trainMarkers.has(runId)) {
-      const { marker, el } = this.trainMarkers.get(runId);
+      const { marker, wrap, dot } = this.trainMarkers.get(runId);
       marker.setLatLng(latlng);
-      if (el) el.classList.toggle('late', isLate);
+      dot.className = `tm ${delayCls}`;
+      if (heading == null) {
+        wrap.classList.add('no-dir');
+      } else {
+        wrap.classList.remove('no-dir');
+        wrap.style.transform = `rotate(${heading}deg)`;
+      }
       if (this.followedRunId === runId) {
         this.map.setView(latlng, this.map.getZoom(), { animate: false });
       }
     } else {
-      const el = document.createElement('div');
-      el.className = `tm${isLate ? ' late' : ''}`;
-      el.style.cssText = `background:${run.color};`;
+      // Rotating wrapper carries the heading nub; the dot inside keeps its own
+      // hover/scale transform so the two don't fight.
+      const wrap = document.createElement('div');
+      wrap.className = 'tm-wrap' + (heading == null ? ' no-dir' : '');
+      if (heading != null) wrap.style.transform = `rotate(${heading}deg)`;
 
-      const icon = L.divIcon({
-        html:       el,
-        className:  '',
-        iconSize:   [CONFIG.TRAIN_DOT_SIZE, CONFIG.TRAIN_DOT_SIZE],
-        iconAnchor: [CONFIG.TRAIN_DOT_SIZE / 2, CONFIG.TRAIN_DOT_SIZE / 2],
-      });
+      const nub = document.createElement('div');
+      nub.className = 'tm-nub';
 
+      const dot = document.createElement('div');
+      dot.className = `tm ${delayCls}`;
+      dot.style.background = run.color;
+
+      wrap.appendChild(nub);
+      wrap.appendChild(dot);
+
+      const icon = L.divIcon({ html: wrap, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
       const marker = L.marker(latlng, { icon, zIndexOffset: 500 });
       marker.on('click', () => this.showTrainInfo(runId));
 
       this.trainGroup.addLayer(marker);
-      this.trainMarkers.set(runId, { marker, el });
+      this.trainMarkers.set(runId, { marker, wrap, dot });
     }
   }
 
@@ -1341,6 +1369,26 @@ class PTVLiveMap {
   setCount(text) {
     const el = document.getElementById('train-count');
     if (el) el.textContent = text;
+  }
+
+  // The "N delayed" chip doubles as a filter toggle (click = show delayed only).
+  setDelayChip(n) {
+    const el = document.getElementById('delay-filter');
+    if (!el) return;
+    if (n > 0) {
+      el.textContent = `${n} delayed`;
+      el.classList.remove('hidden');
+      el.classList.toggle('active', this.delayedOnly);
+    } else {
+      el.classList.add('hidden');
+      this.delayedOnly = false; // nothing to filter to
+    }
+  }
+
+  toggleDelayedOnly() {
+    this.delayedOnly = !this.delayedOnly;
+    const el = document.getElementById('delay-filter');
+    if (el) el.classList.toggle('active', this.delayedOnly);
   }
 
   setLastUpdate(date) {
