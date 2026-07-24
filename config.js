@@ -81,7 +81,7 @@ const CONFIG = {
   // ---- Visual ----
   ROUTE_WEIGHT:   2.5,
   ROUTE_OPACITY:  0.75,
-  TRAIN_DOT_SIZE: 12,
+  TRAIN_DOT_SIZE: 14,
 
   // Stale run removal threshold (multiples of LIVE_REFRESH_MS)
   STALE_MULTIPLIER: 6,

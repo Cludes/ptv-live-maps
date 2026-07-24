@@ -32,7 +32,7 @@
 [data-theme="light"] #map                    { background: #e8ecf0; }
 [data-theme="light"] .leaflet-container      { background: #e8ecf0 !important; }
 [data-theme="light"] .logo-text              { color: var(--text); }
-[data-theme="light"] .tm                     { border-color: rgba(0,0,0,0.25); }
+[data-theme="light"] .tm                     { border-color: #fff; }
 [data-theme="light"] #search-input           { background: rgba(0,0,0,0.05); }
 [data-theme="light"] #search-input::placeholder { color: #bbb; }
 [data-theme="light"] .action-btn             { background: rgba(0,0,0,0.05); }
@@ -702,12 +702,12 @@ kbd {
 
 /* ---- Train marker (rendered as DivIcon) ---- */
 .tm {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.75);
+  border: 2.5px solid #fff;                      /* opaque white ring - pops on any line colour */
   cursor: pointer;
-  box-shadow: 0 0 0 0 currentColor;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.85);   /* crisp dark edge, no blur: high-contrast + cheap */
   transition: transform 0.08s;
 }
 .tm:hover { transform: scale(1.5); }

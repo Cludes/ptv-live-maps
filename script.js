@@ -526,9 +526,12 @@ class PTVLiveMap {
     if (this._animRunning) return;
     this._animRunning = true;
     const tick = () => {
-      if (this.showTrains) this.updateTrainPositions();
-      if (this.showGPS) this.updateGPSPositions();
-      // Render trails every 3rd frame (~20fps) - smooth enough, avoids excess SVG churn
+      // Position updates every 2nd frame (~30fps): on-screen trains crawl a few px/s,
+      // so this halves the work with no visible difference. Trails every 3rd frame.
+      if (this._trailN % 2 === 0) {
+        if (this.showTrains) this.updateTrainPositions();
+        if (this.showGPS) this.updateGPSPositions();
+      }
       if (this._trailN % 3 === 0) this.renderTrails();
       this._trailN++;
       this.animFrame = requestAnimationFrame(tick);
@@ -538,6 +541,7 @@ class PTVLiveMap {
 
   updateTrainPositions() {
     const now = Date.now();
+    const bounds = this.map.getBounds().pad(0.25); // cull DOM work for trains outside the view
 
     for (const [runId, run] of this.liveRuns) {
       if (!this.activeRoutes.has(run.routeId)) {
@@ -572,7 +576,15 @@ class PTVLiveMap {
         run.smoothLng += (pos.lng - run.smoothLng) * SMOOTH;
       }
 
-      this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run);
+      // Keep interpolating every train's position (cheap), but only touch the DOM
+      // for those in/near the viewport; off-screen ones shed their marker.
+      if (bounds.contains([run.smoothLat, run.smoothLng])) {
+        this.upsertTrainMarker(runId, run.smoothLat, run.smoothLng, run);
+      } else if (this.trainMarkers.has(runId)) {
+        const { marker } = this.trainMarkers.get(runId);
+        this.trainGroup.removeLayer(marker);
+        this.trainMarkers.delete(runId);
+      }
     }
 
     for (const [runId] of this.trainMarkers) {
@@ -671,7 +683,7 @@ class PTVLiveMap {
     } else {
       const el = document.createElement('div');
       el.className = `tm${isLate ? ' late' : ''}`;
-      el.style.cssText = `background:${run.color};box-shadow:0 0 7px ${run.color}80;`;
+      el.style.cssText = `background:${run.color};`;
 
       const icon = L.divIcon({
         html:       el,
@@ -912,11 +924,13 @@ class PTVLiveMap {
 
   updateGPSPositions() {
     const now = Date.now();
+    const bounds = this.map.getBounds().pad(0.25);
     for (const [id, v] of this.gpsVehicles) {
       const t = Math.min(1, (now - v.t0) / CONFIG.GPS_REFRESH_MS);
       v.curLat = v.fromLat + (v.toLat - v.fromLat) * t;
       v.curLng = v.fromLng + (v.toLng - v.fromLng) * t;
-      this.upsertGPSMarker(id, v);
+      if (bounds.contains([v.curLat, v.curLng])) this.upsertGPSMarker(id, v);
+      else this.removeGPSMarker(id);
     }
   }
 
@@ -935,10 +949,11 @@ class PTVLiveMap {
       el.className   = 'gps-arrow';
       el.style.cssText = `transform:rotate(${rot}deg);`;
       // Navigation arrow points up at bearing 0 (north); GTFS bearing is deg clockwise from north
-      el.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="${color}" ` +
-        `style="filter:drop-shadow(0 0 4px ${color})"><path d="M12 2 L19 21 L12 16 L5 21 Z"/></svg>`;
+      el.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${color}" ` +
+        `stroke="rgba(0,0,0,0.9)" stroke-width="1.2" stroke-linejoin="round">` +
+        `<path d="M12 2 L19 21 L12 16 L5 21 Z"/></svg>`;
 
-      const icon = L.divIcon({ html: el, className: '', iconSize: [20, 20], iconAnchor: [10, 10] });
+      const icon = L.divIcon({ html: el, className: '', iconSize: [22, 22], iconAnchor: [11, 11] });
       const marker = L.marker(latlng, { icon, zIndexOffset: 600 });
       const label = meta ? `${meta.name} line (live GPS)` : `Live GPS - route ${v.route_id}`;
       marker.bindTooltip(label, { direction: 'top' });
