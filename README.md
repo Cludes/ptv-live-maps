@@ -1,83 +1,59 @@
 # PTV Live - Melbourne Train Tracker
 
-[![Fetch Live Train Data](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-trains.yml/badge.svg)](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-trains.yml)
-[![Fetch Network Data](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-network.yml/badge.svg)](https://github.com/Cludes/ptv-live-maps/actions/workflows/fetch-network.yml)
+[![Deploy to Cloudflare Pages](https://github.com/Cludes/ptv-live-maps/actions/workflows/deploy-cf-pages.yml/badge.svg)](https://github.com/Cludes/ptv-live-maps/actions/workflows/deploy-cf-pages.yml)
 
-A live Melbourne metro train tracker for GitHub Pages, powered by the [PTV Timetable API](https://www.ptv.vic.gov.au/footer/data-and-reporting/datasets/ptv-timetable-api/).
+A live Melbourne metro + V/Line train tracker, powered by the [PTV Timetable API](https://www.ptv.vic.gov.au/footer/data-and-reporting/datasets/ptv-timetable-api/) and hosted on Cloudflare Pages.
 
-GitHub Actions fetches train departure data every ~60 seconds and commits it to the repo. GitHub Pages serves the result as a static site - no external servers, no proxies.
+Live departures are signed and fetched server-side by a Cloudflare Pages Function, so the PTV API key never reaches the browser. A separate additive layer plots real GPS positions from the Transport Victoria GTFS-Realtime feed.
 
-**Live site:** https://cludes.github.io/ptv-live-maps/
+**Live site:** https://ptv-live-maps.pages.dev/
 
 ---
 
 ## How it works
 
 ```
-GitHub Actions (every 5 min, 5 fetches inside each run)
-    └─ Signs PTV API request with HMAC-SHA1
-    └─ Writes data/live.json + data/network.json
-    └─ Commits and pushes
-
-GitHub Pages
-    └─ Serves index.html + data/*.json as static files
+Cloudflare Pages Functions (same origin as the site)
+    /api/departures  - signs PTV Timetable API with HMAC-SHA1, returns departures, edge-cached ~60s
+    /api/disruptions - current metro + regional rail disruptions, edge-cached ~5 min
+    /api/vehicles    - GTFS-Realtime vehicle positions (real GPS layer)
 
 Browser (60fps animation)
-    └─ Reads data/live.json every 30s
+    └─ Polls /api/departures every 60s
     └─ Interpolates train positions between stops every frame
     └─ Trains move smoothly regardless of data refresh rate
 ```
 
-The API key is stored as a GitHub repository secret and never exposed to the browser.
+The static network (routes, stops, track geometry) is built from the static GTFS feed and served from `data/network.json`. The PTV credentials are stored only as encrypted Cloudflare Pages secrets and never exposed to the browser.
 
 ---
 
-## Setup (5 steps)
+## Setup
 
-### 1. Get PTV API credentials
+### 1. Get PTV Timetable API credentials
 
 Request access at: https://www.ptv.vic.gov.au/footer/data-and-reporting/datasets/ptv-timetable-api/
 
-You'll receive by email:
-- A **Developer ID** (number)
-- An **API Key** (long string)
+You'll receive by email a **User ID** (devid) and an **API Key**.
 
-### 2. Add repository secrets
+### 2. Add them as Cloudflare Pages secrets
 
-In your GitHub repo, go to **Settings - Secrets and variables - Actions** and add:
+In the Cloudflare dashboard: **Workers & Pages - ptv-live-maps - Settings - Variables and Secrets**, add two encrypted secrets:
 
-| Secret name   | Value                    |
-|---------------|--------------------------|
-| `PTV_DEV_ID`  | Your PTV Developer ID    |
-| `PTV_API_KEY` | Your PTV API Key         |
+| Secret name   | Value                 |
+|---------------|-----------------------|
+| `PTV_DEV_ID`  | Your PTV User ID      |
+| `PTV_API_KEY` | Your PTV API Key      |
 
-The `CLUDESAPP_ID` and `CLUDESAPP_PEM` secrets (for GitHub App authentication) should already be in place.
+(`PTV_KEYID`, the GTFS-Realtime Subscription Key, powers the optional real-GPS layer at `/api/vehicles`.)
 
-### 3. Enable GitHub Pages
+Alternatively, if the same values are stored as GitHub repo secrets, run the **Sync PTV secrets to Cloudflare Pages** workflow to copy them across without exposing the values.
 
-In your GitHub repo, go to **Settings - Pages**:
-- Source: **Deploy from a branch**
-- Branch: `master`, folder: `/ (root)`
+Cloudflare binds secrets at deploy time, so re-run **Deploy to Cloudflare Pages** after adding or changing them.
 
-### 4. Populate network data (first time only)
+### 3. Deploy
 
-Go to **Actions - Fetch Network Data (Routes + Stops) - Run workflow**.
-
-This fetches all Melbourne metro routes and stops and commits `data/network.json`. Takes about 2 minutes.
-
-### 5. Trigger the first live data fetch
-
-Go to **Actions - Fetch Live Train Data - Run workflow**.
-
-After this runs, trains will appear on the map. The scheduled workflow then keeps data fresh automatically.
-
----
-
-## Data refresh
-
-The live train workflow runs on GitHub's 5-minute cron, but runs **5 fetches inside each workflow** with ~60-second gaps between them. This gives roughly 1-minute data freshness.
-
-The browser-side animation runs at ~60fps continuously using position interpolation, so trains appear to move smoothly even between data updates.
+Every push to `master` triggers the **Deploy to Cloudflare Pages** workflow, which builds the static site and bundles the Functions in `functions/`.
 
 ---
 
@@ -90,15 +66,21 @@ ptv-live-maps/
 - config.js                             Route colours and settings
 - script.js                             App logic and animation
 - data/
-  - network.json                        Routes + stops (updated daily)
-  - live.json                           Current departures (updated ~60s)
+  - network.json                        Routes + stops + track geometry (static, built from GTFS)
+  - gtfs-routes.json                    GTFS route_id -> line metadata (colours the GPS layer)
+- functions/
+  - api/
+    - departures.js                     Signed live departures (server-side)
+    - disruptions.js                    Signed disruptions (server-side)
+    - vehicles.js                       GTFS-Realtime vehicle positions
 - .github/
   - workflows/
-    - fetch-trains.yml                  Scheduled live data workflow
-    - fetch-network.yml                 Daily network data workflow
+    - deploy-cf-pages.yml               Deploys site + Functions to Cloudflare Pages
+    - sync-ptv-secrets.yml              Copies PTV repo secrets into Pages secrets
+    - fetch-network.yml                 Optional network rebuild (disabled by default)
   - scripts/
-    - fetch-trains.js                   PTV API fetcher (departures)
-    - fetch-network.js                  PTV API fetcher (routes + stops)
+    - build-network-from-gtfs.js        Builds network.json from the static GTFS feed
+    - fetch-network.js                  PTV API network fetcher (legacy, no track geometry)
 ```
 
 ---
@@ -116,20 +98,19 @@ ptv-live-maps/
 
 Edit `config.js` to adjust behaviour:
 
-| Setting             | Default | What it does                           |
-|---------------------|---------|----------------------------------------|
-| `LIVE_REFRESH_MS`   | 30000   | How often the browser re-reads live.json |
-| `ROUTE_WEIGHT`      | 2.5     | Route line thickness                   |
-| `ROUTE_OPACITY`     | 0.75    | Route line opacity                     |
-| `TRAIN_DOT_SIZE`    | 12      | Train dot size (px)                    |
-| `STALE_MULTIPLIER`  | 6       | Cycles before removing an unseen train |
+| Setting             | Default | What it does                              |
+|---------------------|---------|-------------------------------------------|
+| `LIVE_REFRESH_MS`   | 60000   | How often the browser polls `/api/departures` |
+| `ROUTE_WEIGHT`      | 2.5     | Route line thickness                      |
+| `ROUTE_OPACITY`     | 0.75    | Route line opacity                        |
+| `TRAIN_DOT_SIZE`    | 12      | Train dot size (px)                       |
+| `STALE_MULTIPLIER`  | 6       | Cycles before removing an unseen train    |
 
 ---
 
 ## Limitations
 
-- **Timetable-based positioning** - trains are interpolated from scheduled departure times, not live GPS. Position accuracy matches timetable accuracy.
-- **~1 min data lag** - GitHub Actions has a 5-minute minimum cron, worked around with a fetch loop.
+- **Timetable-based positioning** - trains are interpolated from scheduled departure times, not live GPS (that's the separate `/api/vehicles` layer). Position accuracy matches timetable accuracy.
 - **Flinders Street + outer terminuses** - trains that neither start nor stop at these hubs may not appear.
 
 ---

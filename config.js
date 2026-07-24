@@ -4,9 +4,9 @@
 // =============================================================
 
 const CONFIG = {
-  // ---- Data files (written by GitHub Actions, served by GitHub Pages) ----
-  NETWORK_DATA_URL: 'data/network.json', // routes + stops (updated daily)
-  LIVE_DATA_URL:    'data/live.json',    // current departures (updated every 5 min)
+  // ---- Data sources ----
+  NETWORK_DATA_URL: 'data/network.json', // routes + stops (static, built from GTFS)
+  LIVE_DATA_URL:    '/api/departures',   // live departures, signed server-side by the Pages Function
 
   // ---- Map ----
   MAP_CENTER: [-37.8136, 144.9631], // Melbourne CBD
@@ -22,7 +22,7 @@ const CONFIG = {
     'Transit data &copy; <a href="https://www.ptv.vic.gov.au/">Public Transport Victoria</a>',
 
   // ---- Refresh ----
-  // How often the frontend re-reads data/live.json (GitHub Actions updates it every ~5 min).
+  // How often the frontend re-polls /api/departures (the Pages Function edge-caches ~60s).
   // Cache-busting query param is appended so the browser always gets the latest version.
   LIVE_REFRESH_MS: 60000, // 60s - data only changes every ~60s, no gain polling faster
 

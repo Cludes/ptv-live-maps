@@ -1,11 +1,11 @@
 /* ============================================================
    PTVLiveMap - Main Application
    ============================================================
-   Data flow (GitHub Pages / GitHub Actions):
-     data/network.json  - routes + stops fetched daily by GH Actions
-     data/live.json     - departures fetched ~every 60s by GH Actions
+   Data flow (Cloudflare Pages):
+     data/network.json  - routes + stops, static (built from GTFS)
+     /api/departures    - live departures, signed server-side + edge-cached ~60s
 
-   The browser never calls the PTV API directly.
+   The browser never calls the PTV API directly (the key stays on the edge).
    requestAnimationFrame runs position interpolation at ~60fps so
    trains move smoothly between the ~60-second data refreshes.
    ============================================================ */
@@ -63,7 +63,7 @@ class PTVLiveMap {
 
     this._cinemaMode  = false;
 
-    // Track the last data/live.json fetch time to detect stale data
+    // Track the last departures fetch time to detect stale data
     this._lastFetchedAt = null;
 
     // ---- Live GPS layer (real positions from the Cloudflare Worker) ----
@@ -342,7 +342,7 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Fetch live departures (data/live.json written by GH Actions)
+  //  Fetch live departures (signed server-side by the /api/departures Pages Function)
   // ──────────────────────────────────────────────────────────
   async fetchLiveData() {
     this.setStatus('loading');
@@ -483,7 +483,7 @@ class PTVLiveMap {
 
   async loadDisruptions() {
     try {
-      const res  = await fetch(`data/disruptions.json?t=${Date.now()}`);
+      const res  = await fetch(`/api/disruptions?t=${Date.now()}`);
       if (!res.ok) return;
       const data = await res.json();
       const list = data.disruptions || [];
@@ -1221,7 +1221,7 @@ class PTVLiveMap {
   }
 
   // ──────────────────────────────────────────────────────────
-  //  Polling - re-reads data/live.json on interval
+  //  Polling - re-polls /api/departures on interval
   // ──────────────────────────────────────────────────────────
   startPolling() {
     this._lastPollAt = Date.now();
