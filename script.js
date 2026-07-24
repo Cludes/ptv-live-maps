@@ -547,7 +547,7 @@ class PTVLiveMap {
 
       // Demo: reverse direction when reaching the end of the route
       if (run._demo) {
-        const stops = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
+        const stops = this._resolveStops(run);
         if (stops.length >= 2) {
           const elapsedMin  = (now - run.hubDepartureMs) / 60000;
           const floatIdx    = elapsedMin / (run.totalMinutes / stops.length);
@@ -589,10 +589,21 @@ class PTVLiveMap {
   //  Falls back to equal-time-per-stop for older network.json.
   // ──────────────────────────────────────────────────────────
 
+  // Resolve stopIds -> stop objects, cached per run so the animation loop
+  // doesn't rebuild the array (and re-do N map lookups) every frame. The cache
+  // invalidates automatically when stopIds is reassigned - i.e. on a data
+  // refresh (new run object) or a demo-mode direction reverse (new array).
+  _resolveStops(run) {
+    if (run._stopsCache && run._stopsCacheKey === run.stopIds) return run._stopsCache;
+    run._stopsCache    = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
+    run._stopsCacheKey = run.stopIds;
+    return run._stopsCache;
+  }
+
   // Returns { stops, floatIdx } plus distance fields if available.
   // All position/ETA methods share this to avoid duplicating the math.
   _computeProgress(run, now) {
-    const stops = run.stopIds.map(id => this.stopsData.get(id)).filter(Boolean);
+    const stops = this._resolveStops(run);
     if (stops.length < 2) return null;
 
     const elapsedMin = (now - run.hubDepartureMs) / 60000;
